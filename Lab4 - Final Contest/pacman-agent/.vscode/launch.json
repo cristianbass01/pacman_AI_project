@@ -1,0 +1,20 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "pacman-contest/src/contest/capture.py",
+            "args": ["-r", 
+                "pacman-contest/src/contest/agents/team_bfs_A/myTeam.py", 
+                "-b", 
+                "pacman-contest/src/contest/baselineTeam.py"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
