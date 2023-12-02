@@ -60,17 +60,19 @@ class agentBase(CaptureAgent):
         # the following initialises self.red and self.distancer
         CaptureAgent.register_initial_state(self, game_state)
 
-    def choose_action(self, game_state):
-        """
-        Required.
-        This is called each turn to get an agent to choose and action
-        Return:
-        This find the directions by going through game_state.getLegalAction
-        - don't try and generate this by manually
-        """
-        actions = game_state.get_legal_actions(self.index)
+        self.gridWidth = self.get_food(game_state).width
+        self.gridHeight = self.get_food(game_state).height
+        if self.red:
+            self.safe_boundary = int(self.gridWidth / 2) - 1
+        else:
+            self.safe_boundary = int(self.gridWidth / 2)
 
-        return random.choice(actions)
+        self.prev_food = len(self.get_food(game_state).as_list())
+
+        self.safe_pos = []
+        for y in range(self.gridHeight):
+            if not game_state.has_wall(self.safe_boundary, y):
+                self.safe_pos += (self.safe_boundary, y)
 
 
 class offensiveAgent(agentBase):
@@ -84,12 +86,152 @@ class offensiveAgent(agentBase):
         problem = FoodOffenseWithAgentAwareness(startingGameState=game_state, captureAgent=self)
 
 
-        actions = aStarSearch(problem, heuristic=offensiveHeuristic)
+        actions = aStarSearch(problem, heuristic=self.offensiveHeuristic)
+
         # this can occure if start in the goal state. In this case do not want to perform any action.
         if actions == []:
             actions = ["Stop"]
 
         return actions[0]
+    
+    def offensiveHeuristic(self, state, problem=None):
+        """
+        A heuristic function estimates the cost from the current state to the nearest
+        goal in the provided SearchProblem.  
+        
+        captureAgent = problem.captureAgent
+        index = captureAgent.index
+        game_state = state[0]
+
+        # check if we have reached a goal state and explicitly return 0
+        if captureAgent.red == True:
+            if game_state.data.score_change >= problem.MINIMUM_IMPROVEMENT:
+                return 0
+        # If blue team, want scores to go down
+        else:
+            if game_state.data.score_change <= - problem.MINIMUM_IMPROVEMENT:
+                return 0
+
+        agent_state = game_state.get_agent_state(index)
+        food_carrying = agent_state.num_carrying
+
+        myPos = game_state.get_agent_state(index).get_position()
+
+        # this will be updated to be closest food location if not collect enough food
+        return_home_from = myPos
+
+        # still need to collect food
+        dist_to_food = 0
+        if food_carrying < problem.MINIMUM_IMPROVEMENT:
+            # distance to the closest food
+            food_list = captureAgent.get_food(game_state).as_list()
+
+            min_pos = None
+            min_dist = 99999999
+            for food in food_list:
+                dist = captureAgent.get_maze_distance(myPos, food)
+                if dist < min_dist:
+                    min_pos = food
+                    min_dist = dist
+
+            dist_to_food = min_dist
+            return_home_from = min_pos
+            return dist_to_food
+
+        # Returning Home
+        # WARNING: this assumes the maps are always semetrical, territory is divided in half, red on right, blue on left
+        walls = list(game_state.get_walls())
+        y_len = len(walls[0])
+        x_len = len(walls)
+        mid_point_index = int(x_len/2)
+        if captureAgent.red:
+            mid_point_index -= 1
+
+        # find all the entries and find distance to closest
+        entry_coords = []
+        for i, row in enumerate(walls[mid_point_index]):
+            if row is False:  # there is not a wall
+                entry_coords.append((int(mid_point_index), int(i)))
+
+        minDistance = min([captureAgent.get_maze_distance(return_home_from, entry)
+                        for entry in entry_coords])
+        return dist_to_food + minDistance"""
+
+        game_state = state[0]
+
+        my_pos = game_state.get_agent_position(self.index)
+        prev_game_state = self.get_previous_observation()
+
+        difend_food_pos = self.get_food(game_state).as_list()
+        offens_food_pos = self.get_food_you_are_defending(game_state).as_list()
+
+        prev_difend_food_pos = self.get_food(prev_game_state).as_list()
+        prev_offens_food_pos = self.get_food_you_are_defending(prev_game_state).as_list()
+
+        difend_capsule_pos = self.get_capsules(game_state)
+        offens_capsule_pos = self.get_capsules_you_are_defending(game_state)
+
+        teammate_positions = [game_state.get_agent_position(agent) for agent in self.get_team(game_state) if agent != self.index]
+        enemy_positions = [game_state.get_agent_position(agent) for agent in self.get_opponents(game_state)]
+
+        current_score = self.get_score(game_state)
+        
+        #Usefull
+        # self.is_pacman
+        # self.scared_timer
+        # self.num_carrying
+        # self.num_returned
+        ### TODO ADD DISTRIBUTIONS
+
+        FOOD_CARRYING_MUL = 10
+        FOOD_RETURNED_MUL = 10
+        EATING_CAPSULE_MUL = 100
+        RETURN_HOME_ALL_FOOD_MUL = 100
+        RETURN_HOME_CHASED_MUL = 10
+        RETURN_HOME_ENOUGH_FOOD_MUL = 10
+        ENEMY_PENALTY_MUL = 10
+        TEAMMATE_PENALTY_MUL = 5
+        SCORE_MUL = 30
+
+        # Reward for eating food
+        food_reward = FOOD_CARRYING_MUL * self.num_carryng
+
+        # Reward for eating a capsule when being chased
+        if game_state.get_agent_state(self.index).is_pacman:
+            for agent in self.get_opponents(game_state):
+                if game_state.get_agent_state(agent).is_ghost and not game_state.get_agent_state(agent).scared_timer <= self.get_maze_distance(my_pos, game_state.get_agent_position(agent)) :
+                    for capsule in offens_capsule_pos:  
+                        if self.get_maze_distance(my_pos, capsule) < self.get_maze_distance(my_pos, game_state.get_agent_position(agent)):
+                            food_reward += EATING_CAPSULE_MUL * self.get_maze_distance(my_pos, capsule)  # Adjust the reward value as needed
+                
+        # Reward for returning food
+        food_reward += self.num_returned * FOOD_RETURNED_MUL
+
+        # Reward for returning home once having all the food for win
+        if len(offens_food_pos) <= 2:
+            home_reward = -min([self.get_maze_distance(my_pos, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_ALL_FOOD_MUL
+        else:
+            home_reward = 0
+
+        # Reward for returning home once being chased
+        if any(game_state.get_agent_state(agent).is_ghost and not game_state.get_agent_state(agent).is_scared for agent in self.get_opponents(game_state)):
+            home_reward -= min([self.get_maze_distance(my_pos, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_CHASED_MUL
+        else:
+            home_reward = 0
+
+        # Penalty for being closer to a teammate while on offense
+        teammate_penalty = sum(self.get_maze_distance(my_pos, teammate) for teammate in teammate_positions) * TEAMMATE_PENALTY_MUL
+
+        # Reward based on the score
+        score_reward = current_score * SCORE_MUL
+
+        # Penalty for being closer to an enemy while on offense
+        enemy_penalty = sum(self.get_maze_distance(my_pos, enemy) for enemy in enemy_positions) * ENEMY_PENALTY_MUL
+
+        # Combine rewards and penalties to form the heuristic
+        heuristic = food_reward + home_reward - teammate_penalty + score_reward - enemy_penalty
+
+        return heuristic
 
 
 #################  problems and heuristics  ####################
@@ -218,68 +360,7 @@ class FoodOffenseWithAgentAwareness():
 
         return successors
 
-def offensiveHeuristic(state, problem=None):
-    """
-    A heuristic function estimates the cost from the current state to the nearest
-    goal in the provided SearchProblem.  
-    """
-    captureAgent = problem.captureAgent
-    index = captureAgent.index
-    game_state = state[0]
 
-    # check if we have reached a goal state and explicitly return 0
-    if captureAgent.red == True:
-        if game_state.data.score_change >= problem.MINIMUM_IMPROVEMENT:
-            return 0
-    # If blue team, want scores to go down
-    else:
-        if game_state.data.score_change <= - problem.MINIMUM_IMPROVEMENT:
-            return 0
-
-    agent_state = game_state.get_agent_state(index)
-    food_carrying = agent_state.num_carrying
-
-    myPos = game_state.get_agent_state(index).get_position()
-
-    # this will be updated to be closest food location if not collect enough food
-    return_home_from = myPos
-
-    # still need to collect food
-    dist_to_food = 0
-    if food_carrying < problem.MINIMUM_IMPROVEMENT:
-        # distance to the closest food
-        food_list = captureAgent.get_food(game_state).as_list()
-
-        min_pos = None
-        min_dist = 99999999
-        for food in food_list:
-            dist = captureAgent.get_maze_distance(myPos, food)
-            if dist < min_dist:
-                min_pos = food
-                min_dist = dist
-
-        dist_to_food = min_dist
-        return_home_from = min_pos
-        return dist_to_food
-
-    # Returning Home
-    # WARNING: this assumes the maps are always semetrical, territory is divided in half, red on right, blue on left
-    walls = list(game_state.get_walls())
-    y_len = len(walls[0])
-    x_len = len(walls)
-    mid_point_index = int(x_len/2)
-    if captureAgent.red:
-        mid_point_index -= 1
-
-    # find all the entries and find distance to closest
-    entry_coords = []
-    for i, row in enumerate(walls[mid_point_index]):
-        if row is False:  # there is not a wall
-            entry_coords.append((int(mid_point_index), int(i)))
-
-    minDistance = min([captureAgent.get_maze_distance(return_home_from, entry)
-                       for entry in entry_coords])
-    return dist_to_food + minDistance
 
 
 ################# Defensive problems and heuristics  ####################
@@ -299,13 +380,28 @@ class defensiveAgent(agentBase):
 
         # actions = search.breadthFirstSearch(problem)
         # actions = aStarSearch(problem, heuristic=defensiveHeuristic)
-        actions = aStarSearch(problem, heuristic=defensiveHeuristic)
+        actions = aStarSearch(problem, heuristic=self.defensiveHeuristic)
 
         if actions != None:
             return actions[0]
         else:
             return random.choice(game_state.get_legal_actions(self.index))
 
+    def defensiveHeuristic(self, state, problem=None):
+        """
+        A heuristic function estimates the cost from the current state to the nearest
+        goal in the provided SearchProblem.  This heuristic is trivial.
+        """
+        game_state = state[0]
+        currGoalDistance = state[1]
+
+        succGoalDistance = problem.captureAgent.get_maze_distance(
+            problem.GOAL_POSITION, game_state.get_agent_position(problem.captureAgent.index))
+
+        if succGoalDistance < currGoalDistance:
+            return 0
+        else:
+            return float('inf')
 
 
 class defendTerritoryProblem():
@@ -504,21 +600,7 @@ class defendTerritoryProblem():
         return successors
 
 
-def defensiveHeuristic(state, problem=None):
-    """
-    A heuristic function estimates the cost from the current state to the nearest
-    goal in the provided SearchProblem.  This heuristic is trivial.
-    """
-    game_state = state[0]
-    currGoalDistance = state[1]
 
-    succGoalDistance = problem.captureAgent.get_maze_distance(
-        problem.GOAL_POSITION, game_state.get_agent_position(problem.captureAgent.index))
-
-    if succGoalDistance < currGoalDistance:
-        return 0
-    else:
-        return float('inf')
 
 ################# Search Algorithems ###################
 
