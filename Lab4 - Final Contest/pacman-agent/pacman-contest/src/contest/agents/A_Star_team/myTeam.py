@@ -49,11 +49,16 @@ class agentBase(CaptureAgent):
         self.start = None
         self.index = index
         self.prev_food = None
-        self.safe_boundary = None
+        
         self.gridHeight = None
         self.gridWidth = None
         self.start = None
+
+        self.safe_boundary = None
+        self.danger_boundary = None
+
         self.safe_pos = None
+        self.danger_pos = None
 
     def register_initial_state(self, game_state):
         self.start = game_state.get_agent_position(self.index)
@@ -64,8 +69,10 @@ class agentBase(CaptureAgent):
         self.gridHeight = self.get_food(game_state).height
         if self.red:
             self.safe_boundary = int(self.gridWidth / 2) - 1
+            self.danger_boundary = int(self.gridWidth / 2)
         else:
             self.safe_boundary = int(self.gridWidth / 2)
+            self.danger_boundary = int(self.gridWidth / 2) -1
 
         self.prev_food = len(self.get_food(game_state).as_list())
 
@@ -74,6 +81,10 @@ class agentBase(CaptureAgent):
             if not game_state.has_wall(self.safe_boundary, y):
                 self.safe_pos += (self.safe_boundary, y)
 
+        self.danger_pos = []
+        for y in range(self.gridHeight):
+            if not game_state.has_wall(self.danger_boundary, y):
+                self.danger_pos += (self.danger_boundary, y)
 
 class offensiveAgent(agentBase):
 
@@ -176,8 +187,6 @@ class offensiveAgent(agentBase):
 
         
         current_score = self.get_score(game_state)
-
-
         
         #Usefull
         # self.is_pacman
@@ -186,64 +195,98 @@ class offensiveAgent(agentBase):
         # self.num_returned
         ### TODO ADD DISTRIBUTIONS
 
+        # Pacman
         FOOD_CARRYING_MUL = 10
         FOOD_RETURNED_MUL = 10
         EATING_CAPSULE_MUL = 100
         RETURN_HOME_ALL_FOOD_MUL = 100
         RETURN_HOME_CHASED_MUL = 10
+        EAT_ENEMY_MUL = 10
         RETURN_HOME_ENOUGH_FOOD_MUL = 10
         ENEMY_PENALTY_MUL = 10
         TEAMMATE_PENALTY_MUL = 5
         SCORE_MUL = 30
+        
+        # Not pacman
+        DISTANCE_FOOD = 30
+        DISTANCE_CLOSER_ENEMY_MUL = 100
+        CLOSE_TO_DANGER_POS_MUL = 20
+        DISTANCE_TO_DANGER_POS_MUL = 5
 
-        # Reward for eating food
-        food_reward = FOOD_CARRYING_MUL * self.num_carryng
 
-        # If being chased the heuristic is based on the distance of the capsule or home, but
-        # If the enemy is scared and the time to reach him is enough I can try also to kill him (but it is dangerous to follow him)
         if isPacman(game_state, self):
 
+            # If being chased the heuristic is based on the distance of the capsule or home    
             reward_chased = 0
             if any(is_threat(game_state, self, enemy) for enemy in self.get_opponents(game_state)):
-                # So I am being chased
+                # So I am being chased: 
+                # The reward should be defined by the distance to the capsules, distance to home and distance to enemy
                 for capsule in offens_capsule_pos:  
                     if distance(game_state, self, capsule) < distanceClosestEnemy(game_state, self):
                         reward_chased -= EATING_CAPSULE_MUL * distance(game_state, self, capsule) # Adjust the reward value as needed
                 
-                reward_chased -= min([distance(game_state, self, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_ALL_FOOD_MUL
-                
+                # Distance home
+                reward_chased -= min([distance(game_state, self, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_CHASED_MUL
+
+                # Distance closest enemy
+                reward_chased -= distanceClosestEnemy(game_state, self) * DISTANCE_CLOSER_ENEMY_MUL
+
+                # Mean distance to all enemies
+                reward_chased
+
+                # If in danger the only scope is to return home or eat a capsule, no more food
                 return reward_chased
 
+            # If the enemy is scared and the time to reach him is enough I can try also to kill him (but it is dangerous to follow him)
             reward_enemy_scared = 0
             closestEnemyAgent = closestEnemy(game_state, self)
             if closestEnemyAgent.is_scared and closestEnemyAgent.scared_timer < distance(game_state, self, closestEnemyAgent):
-                reward_enemy_scared -= distance(game_state, self, closestEnemyAgent)
+                reward_enemy_scared -= distance(game_state, self, closestEnemyAgent) * EAT_ENEMY_MUL
 
-        # Reward for returning food
-        food_reward += self.num_returned * FOOD_RETURNED_MUL
+            # Reward for eating food
+            food_reward = self.num_carryng * FOOD_CARRYING_MUL
 
-        # Reward for returning home once having all the food for win
-        if len(offens_food_pos) <= 2:
-            home_reward = -min([self.get_maze_distance(my_pos, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_ALL_FOOD_MUL
-        else:
+            # Reward for returning food
+            food_reward += self.num_returned * FOOD_RETURNED_MUL
+
+            # Reward for returning home once having all the food for win
             home_reward = 0
+            if len(offens_food_pos) <= 2:
+                home_reward -= min([distance(game_state, self, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_ALL_FOOD_MUL
 
-        # Penalty for being closer to a teammate while on offense
-        teammate_penalty = sum(self.get_maze_distance(my_pos, teammate) for teammate in teammate_positions) * TEAMMATE_PENALTY_MUL
+            # Penalty for being closer to a teammate while on offense
+            teammate_penalty = sum(distance(game_state, self, teammate) for teammate in teammate_positions) * TEAMMATE_PENALTY_MUL
 
-        # Reward based on the score
-        score_reward = current_score * SCORE_MUL
+            # Reward based on the score MAYBE DON'T NEEDED
+            #score_reward = current_score * SCORE_MUL
 
-        # Penalty for being closer to an enemy while on offense
-        enemy_penalty = sum(self.get_maze_distance(my_pos, enemy) for enemy in enemy_positions) * ENEMY_PENALTY_MUL
+            # Penalty for being closer to an enemy while on offense ALREADY IN BEING CHASED
+            #enemy_penalty = sum(self.get_maze_distance(my_pos, enemy) for enemy in enemy_positions) * ENEMY_PENALTY_MUL
 
-        # Combine rewards and penalties to form the heuristic
-        heuristic = food_reward + home_reward - teammate_penalty + score_reward - enemy_penalty
+            # Combine rewards and penalties to form the heuristic
+            heuristic = food_reward + home_reward - teammate_penalty + reward_enemy_scared
+        else:
+            reward_not_pacman = 0  
+
+            # If not pacman means that it is in the safe zone
+            # If it is in the safe zone, the scope will be to return to the enemy zone and eat!
+            distanceClosestFood = min([distance(game_state, self, food_pos) for food_pos in offens_food_pos])
+            reward_not_pacman -= distanceClosestFood * DISTANCE_FOOD
+              
+            # Before returning to the enemy zone I need to see if there are other ghosts near me that can kill me or chased me
+            if any(is_threat(game_state, self, enemy) for enemy in self.get_opponents(game_state)):
+                # Distance closest enemy
+                reward_not_pacman -= distanceClosestEnemy(game_state, self) * DISTANCE_CLOSER_ENEMY_MUL
+            
+            # Better if I will stay closer to the border in order to pass (but not necessary in order to 'go after the hill' if necessary)
+            distanceToClosestDangerPos = min([distance(game_state, self, danger_pos) for danger_pos in self.danger_boundary])
+            reward_not_pacman -= distanceToClosestDangerPos * DISTANCE_TO_DANGER_POS_MUL
+            
+            heuristic = reward_not_pacman
 
         return heuristic
     
 def is_threat(game_state, my_agent, enemy_agent):
-    my_pos = game_state.get_agent_position(my_agent)
     enemy_pos = game_state.get_agent_position(enemy_agent)
     isGhost = game_state.get_agent_state(enemy_agent).is_ghost
     isScared = game_state.get_agent_state(enemy_agent).is_scared
