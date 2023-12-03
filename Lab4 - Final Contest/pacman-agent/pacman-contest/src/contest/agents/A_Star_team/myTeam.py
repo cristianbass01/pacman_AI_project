@@ -180,8 +180,8 @@ class offensiveAgent(agentBase):
         #prev_difend_food_pos = self.get_food(prev_game_state).as_list()
         #prev_offens_food_pos = self.get_food_you_are_defending(prev_game_state).as_list()
 
-        difend_capsule_pos = self.get_capsules(game_state)
-        offens_capsule_pos = self.get_capsules_you_are_defending(game_state)
+        offence_capsule_pos = self.get_capsules(game_state)
+        defence_capsule_pos = self.get_capsules_you_are_defending(game_state)
 
         teammate_positions = [game_state.get_agent_position(agent) for agent in self.get_team(game_state) if agent != self.index]
         enemy_positions = [game_state.get_agent_position(agent) for agent in self.get_opponents(game_state)]
@@ -205,12 +205,12 @@ class offensiveAgent(agentBase):
         EAT_ENEMY_MUL = 10
         RETURN_HOME_ENOUGH_FOOD_MUL = 10
         ENEMY_PENALTY_MUL = 10
-        TEAMMATE_PENALTY_MUL = 5
+        TEAMMATE_PENALTY_MUL = 2
         SCORE_MUL = 30
         
         # Not pacman
         DISTANCE_FOOD_MUL = 30
-        DISTANCE_CLOSER_ENEMY_MUL = 100
+        DISTANCE_CLOSER_ENEMY_MUL = 10
         CLOSE_TO_DANGER_POS_MUL = 20
         DISTANCE_TO_DANGER_POS_MUL = 5
 
@@ -222,20 +222,28 @@ class offensiveAgent(agentBase):
             # If being chased the heuristic is based on the distance of the capsule or home    
             reward_chased = 0
             if any(is_threat(game_state, self, enemy) for enemy in self.get_opponents(game_state)):
+                # TODO check if we can make this part faster cause when I see
+                # enemies the game slows down due to recalculating constantly
+
                 # So I am being chased: 
                 # The reward should be defined by the distance to the capsules, distance to home and distance to enemy
-                for capsule in offens_capsule_pos:  
-                    if distance(game_state, self, capsule) < distanceClosestEnemy(game_state, self):
-                        reward_chased -= EATING_CAPSULE_MUL * distance(game_state, self, capsule) # Adjust the reward value as needed
+                distToClosestEnemy = distanceClosestEnemy(game_state, self)
+
+                for capsule in offence_capsule_pos:  
+                    distToCapsule = distance(game_state, self, capsule)
+                    canKill = distToCapsule < distToClosestEnemy
+                    reward_chased -= canKill * EATING_CAPSULE_MUL * distToCapsule # Adjust the reward value as needed
                 
-                # Distance home
-                reward_chased -= min([distance(game_state, self, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_CHASED_MUL
+                # Distance home. For some reason crashes here. idk why TODO FIX THIS
+                # reward_chased -= min([distance(game_state, self, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_CHASED_MUL
 
                 # Distance closest enemy
-                reward_chased -= distanceClosestEnemy(game_state, self) * DISTANCE_CLOSER_ENEMY_MUL
+                # TODO This I think should be reworked based on if we want to kill the enemy
+                reward_chased += distToClosestEnemy * DISTANCE_CLOSER_ENEMY_MUL
 
-                # Mean distance to all enemies
-                reward_chased
+                # Mean distance to all enemies TODO maybe add this??
+                # We are slow currently so maybe we should simplify
+                # reward_chased
 
                 # If in danger the only scope is to return home or eat a capsule, no more food
                 return reward_chased
@@ -258,8 +266,9 @@ class offensiveAgent(agentBase):
             if len(offens_food_pos) <= 2:
                 home_reward -= min([distance(game_state, self, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_ALL_FOOD_MUL
 
-            # Penalty for being closer to a teammate while on offense
-            teammate_penalty = sum(distance(game_state, self, teammate) for teammate in teammate_positions) * TEAMMATE_PENALTY_MUL
+            teammate_penalty = 0
+            ## Penalty for being closer to a teammate while on offense
+            teammate_penalty = sum([distance(game_state, self, teammate) for teammate in teammate_positions]) * TEAMMATE_PENALTY_MUL
 
             # Reward based on the score MAYBE DON'T NEEDED
             #score_reward = current_score * SCORE_MUL
@@ -268,7 +277,7 @@ class offensiveAgent(agentBase):
             #enemy_penalty = sum(self.get_maze_distance(my_pos, enemy) for enemy in enemy_positions) * ENEMY_PENALTY_MUL
 
             # Combine rewards and penalties to form the heuristic
-            heuristic = food_reward + home_reward - teammate_penalty + reward_enemy_scared
+            heuristic = food_reward + home_reward + teammate_penalty + reward_enemy_scared
         else:
             reward_not_pacman = 0  
 
@@ -307,13 +316,10 @@ def is_threat(game_state, my_agent, enemy_agent):
     
     return False
 
-def getCost(my_agent, my_pos, enemy_pos):
+def getCost(my_agent, my_pos, enemy_pos, maxCost = 30):
     if enemy_pos != None:
         return my_agent.get_maze_distance(my_pos, enemy_pos)
-    else:
-        # Magic number. Just a big number so queue works
-        # TODO Extract in a constant
-        return 999
+    return maxCost
 
 def closestEnemy(game_state, my_agent):
     """
@@ -344,8 +350,8 @@ def distance(game_state, agent, toPos):
     return agent.get_maze_distance(my_pos, toPos)
 
 def distanceClosestEnemy(game_state, my_agent):
-    _, distance = closestEnemy(game_state, my_agent)
-    return distance
+    _, closestEnemyDistance = closestEnemy(game_state, my_agent)
+    return closestEnemyDistance
     
 #################  problems and heuristics  ####################
 
@@ -485,6 +491,7 @@ class defensiveAgent(agentBase):
     def __init__(self, index, time_for_computing=.1):
         super().__init__(index, time_for_computing)
 
+        self.mode = DefenceModes.Default
         # Missing food location tell us the direction of the pacman
         # and where we should head. I will by default try to intercept
         # him from the front
@@ -543,7 +550,6 @@ class DefenceModes(Enum):
 
 class defendTerritoryProblem():
     def __init__(self, startingGameState, captureAgent):
-        self.mode = DefenceModes.Default
         self.NthClosestFood = 1
         self.expanded = 0
         self.startingGameState = startingGameState
@@ -675,9 +681,9 @@ class defendTerritoryProblem():
             self.captureAgent.index).scared_timer > 0
 
         if isScared:
-            self.mode = DefenceModes.Clyde
+            self.captureAgent.mode = DefenceModes.Clyde
         else:
-            self.mode = DefenceModes.Default
+            self.captureAgent.mode = DefenceModes.Default
 
         # If an enemy agents position is know calculate target
         # If not approximate possible targets 
@@ -688,7 +694,7 @@ class defendTerritoryProblem():
                     enemyPosition = self.startingGameState.get_agent_position(enemy)
                     # We decided to do blinky if we see an agent.
                     # Follow him
-                    self.mode = DefenceModes.Blinky
+                    self.captureAgent.mode = DefenceModes.Blinky
                     return enemyPosition
                 else:
                     return self.getGoalPositionIfEnemyLocationUnknown()
