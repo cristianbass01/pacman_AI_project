@@ -83,7 +83,7 @@ class offensiveAgent(agentBase):
         # Used solver to find the solution/path in the problem~
         # Use the plan from the solver, return the required action
 
-        problem = FoodOffenseWithAgentAwareness(startingGameState=game_state, captureAgent=self)
+        problem = FoodOffense(startingGameState=game_state, captureAgent=self)
 
 
         actions = aStarSearch(problem, heuristic=self.offensiveHeuristic)
@@ -174,7 +174,10 @@ class offensiveAgent(agentBase):
         teammate_positions = [game_state.get_agent_position(agent) for agent in self.get_team(game_state) if agent != self.index]
         enemy_positions = [game_state.get_agent_position(agent) for agent in self.get_opponents(game_state)]
 
+        
         current_score = self.get_score(game_state)
+
+
         
         #Usefull
         # self.is_pacman
@@ -196,26 +199,32 @@ class offensiveAgent(agentBase):
         # Reward for eating food
         food_reward = FOOD_CARRYING_MUL * self.num_carryng
 
-        # Reward for eating a capsule when being chased
-        if game_state.get_agent_state(self.index).is_pacman:
-            for agent in self.get_opponents(game_state):
-                if game_state.get_agent_state(agent).is_ghost and not game_state.get_agent_state(agent).scared_timer <= self.get_maze_distance(my_pos, game_state.get_agent_position(agent)) :
-                    for capsule in offens_capsule_pos:  
-                        if self.get_maze_distance(my_pos, capsule) < self.get_maze_distance(my_pos, game_state.get_agent_position(agent)):
-                            food_reward += EATING_CAPSULE_MUL * self.get_maze_distance(my_pos, capsule)  # Adjust the reward value as needed
+        # If being chased the heuristic is based on the distance of the capsule or home, but
+        # If the enemy is scared and the time to reach him is enough I can try also to kill him (but it is dangerous to follow him)
+        if isPacman(game_state, self):
+
+            reward_chased = 0
+            if any(is_threat(game_state, self, enemy) for enemy in self.get_opponents(game_state)):
+                # So I am being chased
+                for capsule in offens_capsule_pos:  
+                    if distance(game_state, self, capsule) < distanceClosestEnemy(game_state, self):
+                        reward_chased -= EATING_CAPSULE_MUL * distance(game_state, self, capsule) # Adjust the reward value as needed
                 
+                reward_chased -= min([distance(game_state, self, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_ALL_FOOD_MUL
+                
+                return reward_chased
+
+            reward_enemy_scared = 0
+            closestEnemyAgent = closestEnemy(game_state, self)
+            if closestEnemyAgent.is_scared and closestEnemyAgent.scared_timer < distance(game_state, self, closestEnemyAgent):
+                reward_enemy_scared -= distance(game_state, self, closestEnemyAgent)
+
         # Reward for returning food
         food_reward += self.num_returned * FOOD_RETURNED_MUL
 
         # Reward for returning home once having all the food for win
         if len(offens_food_pos) <= 2:
             home_reward = -min([self.get_maze_distance(my_pos, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_ALL_FOOD_MUL
-        else:
-            home_reward = 0
-
-        # Reward for returning home once being chased
-        if any(game_state.get_agent_state(agent).is_ghost and not game_state.get_agent_state(agent).is_scared for agent in self.get_opponents(game_state)):
-            home_reward -= min([self.get_maze_distance(my_pos, border_pos) for border_pos in self.safe_pos]) * RETURN_HOME_CHASED_MUL
         else:
             home_reward = 0
 
@@ -232,13 +241,61 @@ class offensiveAgent(agentBase):
         heuristic = food_reward + home_reward - teammate_penalty + score_reward - enemy_penalty
 
         return heuristic
+    
+def is_threat(game_state, my_agent, enemy_agent):
+    my_pos = game_state.get_agent_position(my_agent)
+    enemy_pos = game_state.get_agent_position(enemy_agent)
+    isGhost = game_state.get_agent_state(enemy_agent).is_ghost
+    isScared = game_state.get_agent_state(enemy_agent).is_scared
+    scaredTimer = game_state.get_agent_state(enemy_agent).scared_timer
 
+    # Control if enemy is a ghost
+    if isGhost:
+        # If it is a ghost and it is not scared, then it is a problem
+        if not isScared:
+            return True
+        # If it is scared, but the time to reach and kill him is not enough, than it is a problem
+        elif not scaredTimer <= distance(game_state, my_agent, enemy_pos):
+            return True
+    
+    return False
+
+def closestEnemy(game_state, my_agent):
+    """
+    Return the state of the closest enemy
+    """
+    positionsSorted = util.PriorityQueue()
+    my_pos = game_state.get_agent_position(my_agent.index)
+
+    for enemy in my_agent.get_opponents(game_state):
+
+        enemy_pos = game_state.get_agent_position(enemy.index)
+
+        positionsSorted.push(
+            enemy, my_agent.get_maze_distance(my_pos, enemy_pos))
+        
+    return positionsSorted.pop()
+
+def getPos(game_state, agent):
+    return game_state.get_agent_position(agent.index)
+
+def isPacman(game_state, agent):
+    return game_state.get_agent_state(agent.index).is_pacman
+
+def distance(game_state, agent, toPos):
+    my_pos = game_state.get_agent_position(agent.index)
+    return agent.get_maze_distance(my_pos, toPos)
+
+def distanceClosestEnemy(game_state, my_agent):
+    distance(game_state, game_state.get_agent_position(closestEnemy(game_state, my_agent)))
 
 #################  problems and heuristics  ####################
 
 
+                
 
-class FoodOffenseWithAgentAwareness():
+
+class FoodOffense():
     '''
     This problem extends FoodOffense by updateing the enemy ghost to move to our pacman if they are adjacent (basic Goal Recognition techniques).
     This conveys to our pacman the likely effect of moving next to an enemy ghost - but doesn't prohibit it from doing so (e.g if Pacman has been trapped)
@@ -256,7 +313,7 @@ class FoodOffenseWithAgentAwareness():
         self.MINIMUM_IMPROVEMENT = 1
         self.DEPTH_CUTOFF = 20
         # WARNING: Capture agent doesn't update with new state, this should only be used for non state dependant utils (e.g distancer)
-        self.captureAgent = captureAgent
+        self.my_agent = captureAgent
         self.goal_state_found = None
 
     def getStartState(self):
@@ -289,8 +346,8 @@ class FoodOffenseWithAgentAwareness():
                 return True
             else:
                 return False
-
-    def get_successors(self, state, path = None):
+    
+    def get_successors(self, game_state, path = None):
         """
         Your get_successors function for the CapsuleSearchProblem goes here.
         Args:
@@ -304,26 +361,26 @@ class FoodOffenseWithAgentAwareness():
         # - Option 1: track time left explictly
         # - Option 2: when updating the game_state, add additional information that generateSuccesor doesn't collect
         #           e.g set game_state.data._win to true. If goal then check game_state.isOver() is not true
-        game_state = state[0]
 
-        actions = game_state.get_legal_actions(self.captureAgent.index)
+        actions = game_state.get_legal_actions(self.my_agent.index)
+
         # not interested in exploring the stop action as the state will be the same as out current one.
         if Directions.STOP in actions:
             actions.remove(Directions.STOP)
-        next_game_states = [game_state.generate_successor(self.captureAgent.index, action) for action in actions]
+        next_game_states = [game_state.generate_successor(self.my_agent.index, action) for action in actions]
 
         # if planning close to agent, include expected ghost activity
         current_depth_of_search = len(path)
 
         # we are only concerned about being eaten when we are pacman
-        if current_depth_of_search <= self.DEPTH_CUTOFF and game_state.get_agent_state(self.captureAgent.index).is_pacman:
+        if current_depth_of_search <= self.DEPTH_CUTOFF and game_state.get_agent_state(self.my_agent.index).is_pacman:
             self.expanded += 1  # track number of states expanded
 
             # make any nearby enemy ghosts take a step toward you if legal
             for i, next_game_state in enumerate(next_game_states):
                 # get enemys
-                current_agent_index = self.captureAgent.index
-                enemy_indexes = self.captureAgent.get_opponents(next_game_state)
+                current_agent_index = self.my_agent.index
+                enemy_indexes = self.my_agent.get_opponents(next_game_state)
 
                 # keep only enemies that are close enough to catch pacman.
                 close_enemy_indexes = [enemy_index for enemy_index in enemy_indexes if next_game_state.get_agent_position(enemy_index) is not None]
@@ -355,11 +412,10 @@ class FoodOffenseWithAgentAwareness():
                 next_game_states[i] = next_game_state
                 # if they are next to pacman, move ghost to pacman possiton
 
-        successors = [((next_game_state,), action, 1)
+        successors = [(next_game_state, action, 1)
                       for action, next_game_state in zip(actions, next_game_states)]
 
         return successors
-
 
 
 
@@ -605,25 +661,9 @@ class defendTerritoryProblem():
 ################# Search Algorithems ###################
 
 
-class SolutionNotFound(Exception):
-    pass
 
 
-class Node():
-    def __init__(self, *, name):
-        self.name = name
-
-    def add_info(self, **kwargs):
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-        return self
-
-
-def nullHeuristic(state, problem=None):
-    return 0
-
-
-def aStarSearch(problem, heuristic=nullHeuristic):
+def aStarSearch(problem, heuristic=None):
     """Search the node that has the lowest combined cost and heuristic first."""
     # create a list to store the expanded nodes that do not need to be expanded again
     expanded_nodes = []
