@@ -197,19 +197,19 @@ class offensiveAgent(agentBase):
         ### TODO ADD DISTRIBUTIONS
 
         # Pacman
-        FOOD_CARRYING_MUL = 10
-        FOOD_RETURNED_MUL = 10
-        EATING_CAPSULE_MUL = 100
-        RETURN_HOME_ALL_FOOD_MUL = 100
-        RETURN_HOME_CHASED_MUL = 10
+        FOOD_CARRYING_MUL = 1
+        FOOD_RETURNED_MUL = 1
+        EATING_CAPSULE_MUL = 10
+        RETURN_HOME_ALL_FOOD_MUL = 10
+        RETURN_HOME_CHASED_MUL = 1
         EAT_ENEMY_MUL = 10
-        RETURN_HOME_ENOUGH_FOOD_MUL = 10
-        ENEMY_PENALTY_MUL = 10
-        TEAMMATE_PENALTY_MUL = 2
+        RETURN_HOME_ENOUGH_FOOD_MUL = 1
+        ENEMY_PENALTY_MUL = 1
+        TEAMMATE_PENALTY_MUL = 5
         SCORE_MUL = 30
         
         # Not pacman
-        DISTANCE_FOOD_MUL = 30
+        DISTANCE_FOOD_MUL = 5
         DISTANCE_CLOSER_ENEMY_MUL = 10
         CLOSE_TO_DANGER_POS_MUL = 20
         DISTANCE_TO_DANGER_POS_MUL = 5
@@ -352,6 +352,7 @@ def distance(game_state, agent, toPos):
 def distanceClosestEnemy(game_state, my_agent):
     _, closestEnemyDistance = closestEnemy(game_state, my_agent)
     return closestEnemyDistance
+
     
 #################  problems and heuristics  ####################
 
@@ -390,17 +391,62 @@ class FoodOffense():
         # - Pacman is in our territory
         # - has eaten x food: This comes from the score changing
         # these are both captured by the score changing by a certain amount
+ 
+        agent_state = game_state.get_agent_state(self.my_agent.index)
 
         # Note: can't use CaptureAgent, at it doesn't update with game state
         game_state = state[0]
+        
+        # Try to get previous game_state (if exists)
+        prev_game_state = agent_state.get_previous_observation()
+        prev_agent_state = None
+        if prev_game_state != None:
+            prev_agent_state = prev_game_state.get_agent_state(self.my_agent.index)
+
+        # Being eaten is always not a goal state
+        # Calculating the distance from the past position and the current position to see if I am being killed
+        
+        if prev_agent_state != None:
+            pastPos = prev_agent_state.get_agent_position(self.my_agent.index)
+            currentPos = game_state.get_agent_position(self.my_agent.index)
+            distancePastToCurrentPos = distance()
 
         # If red team, want scores to go up
         if self.captureAgent.red == True:
-            if game_state.data.score_change >= self.MINIMUM_IMPROVEMENT:
-                self.goal_state_found = state
-                return True
+
+            if isPacman(game_state, self):
+
+                closestEnemyAgent, closestEnemyDistance = closestEnemy(game_state, self)
+                isScared = closestEnemyAgent.scared_timer != 0
+
+                # If being chased my goal is not being chased anymore (so eating a capsule or return home)
+                # So if there is a threat, I'm not in the goal state    
+                if any(is_threat(game_state, self, enemy) for enemy in self.get_opponents(game_state)):
+                    if not closestEnemyDistance > 5:
+                        # If the enemy is closer than 5 squares mean that he can follow me
+                        # This is not a goal state
+                        return False
+                    
+
+                # If the enemy is scared and the time to reach him is enough I can try also to kill him (but it is dangerous to follow him)
+                if isScared and closestEnemyAgent.scared_timer <= closestEnemyDistance:
+                    # If it is scared and the distance is not enough to kill him it is not a goal
+                    return False
+
+                # If there is no threat my goal is to eat or return home to collect the food that I am carrying
+                # TODO I think these depends on how far we are from the boundary, so it will depend on the heuristic
+                # But carrying more food or having returned more food is a goal state
+                if prev_agent_state != None and prev_agent_state.num_carrying < agent_state.num_carrying:
+                    return True
+                
+                if prev_agent_state != None and prev_agent_state.num_returned < agent_state.num_returned:
+                    return True
             else:
-                return False
+                # If not pacman means that it is in the safe zone
+                # If it is in the safe zone, the scope will be to return to the enemy zone and eat!
+                # So my future goal is to increase the number of food that I am carrying
+                
+
         # If blue team, want scores to go down
         else:
             if game_state.data.score_change <= -self.MINIMUM_IMPROVEMENT:
