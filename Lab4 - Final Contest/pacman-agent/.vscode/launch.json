@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "pacman-contest/src/contest/capture.py",
             "args": ["-r", 
-                "pacman-contest/src/contest/agents/A_Star_team/myTeam.py", 
+                "pacman-contest/src/contest/agents/A_Star_team/myOffenseTeam.py", 
                 "-b", 
                 "pacman-contest/src/contest/agents/FINAL_TEAM/myTeam.py"],
             "console": "integratedTerminal",
