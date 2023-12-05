@@ -173,16 +173,20 @@ class offensiveAgent(agentBase):
 
         if exist_threat and isPacman(game_state, self):
             if is_carrying_food:
+                print('Using returnSafeHeuristic with isGoalStateReturnSafeOrEatingCapsule')
                 actions = aStarSearch(problem, heuristic=self.returnSafeHeuristic, agent=self, goal=problem.isGoalStateReturnSafeOrEatingCapsule)
             else: 
+                print('Using eatingFoodHeuristicWithAwareness with isGoalStateEatingFoodWithAwareness')
                 actions = aStarSearch(problem, heuristic=self.eatingFoodHeuristicWithAwareness, agent=self, goal=problem.isGoalStateEatingFoodWithAwareness)
         elif start or used_to_be_threat:
+            print('Using eatingFoodHeuristic with isGoalStateEatingFood')
             actions = aStarSearch(problem, heuristic=self.eatingFoodHeuristic, agent=self, goal=problem.isGoalStateEatingFood)
 
-        if no_moves or food_changed:
+        elif no_moves or food_changed:
             if food_changed:
                 self.prev_food = len(self.get_food(game_state).as_list())
 
+            print('Using eatingFoodHeuristic with isGoalStateEatingFood')
             actions = aStarSearch(problem, heuristic=self.eatingFoodHeuristic, agent=self, goal=problem.isGoalStateEatingFood)
         
         if actions != None:
@@ -207,12 +211,27 @@ class offensiveAgent(agentBase):
         closestBoundary = positionsSorted.pop()
         return closestBoundary
     
+    def distanceClosestBoundaryPos(self, game_state):
+        return distance(game_state, self, self.closestBoundaryPos(game_state))
+    
     def eatingFoodHeuristic(self, state):
+        # MIN HEURISTIC:
+        # -11 if there was food in the current pos
+        # ascending following the distance to the food
         game_state = state[0]
+        DISTANCE_FOOD_MUL = 10
+
         offence_food_pos = self.get_food(game_state).as_list()
+        current_pos = game_state.get_agent_position(self.index)
+        
+        prev_game_state = self.get_previous_observation()
+        if prev_game_state != None:
+            if prev_game_state.has_food(current_pos[0], current_pos[1]):
+                return - (DISTANCE_FOOD_MUL + 1)
 
         distanceClosestFood = min([distance(game_state, self, food_pos) for food_pos in offence_food_pos])
-        return distanceClosestFood
+        return - 1 / (distanceClosestFood+1) * DISTANCE_FOOD_MUL
+    
     
     def eatingFoodHeuristicWithAwareness(self, state):
         game_state = state[0]
@@ -221,11 +240,21 @@ class offensiveAgent(agentBase):
 
         heur += self.returnSafeHeuristic(state)
 
+        currentPos = game_state.get_agent_position(self.index)
+        
+        is_dead_end = currentPos in self.dead_ends
+
+        if is_dead_end:
+            if isEnemyCloserToExitOfDeadEnd(game_state, self):
+                heur += 100
+
         return heur
 
     def returnSafeHeuristic(self, state):
         game_state = state[0]
-        DISTANCE_ENEMY_MUL = 50
+        DISTANCE_ENEMY_MUL = 10
+        EATING_MORE_FOOD_MUL = 2
+        GO_BOUNDARY_POS = 4
         
         heur = 0
 
@@ -234,14 +263,14 @@ class offensiveAgent(agentBase):
             if enemy_pos != None:
                 distance_to_enemy = distance(game_state, self, enemy_pos)
                 enemy_state = game_state.get_agent_state(enemy)
-                is_dangerous = distance_to_enemy < 4 and not isPacmanByIndex(game_state, enemy) 
+                is_dangerous = distance_to_enemy < 3 and not isPacmanByIndex(game_state, enemy) 
                 is_dangerous = is_dangerous and enemy_state.scared_timer < (distance(game_state, self, enemy_pos) + 2)
                 if is_dangerous:
                     heur += 1/distance_to_enemy * DISTANCE_ENEMY_MUL
 
-                    return heur
+        heur -= self.distanceClosestBoundaryPos(game_state) * GO_BOUNDARY_POS
                     
-        return self.eatingFoodHeuristic(state)
+        return heur
     
     def offensiveHeuristic(self, state):
         game_state = state[0]
@@ -412,7 +441,7 @@ def is_threat(game_state, my_agent, enemy_idx):
 
     # Control if enemy is a ghost which we can not kill
     MIN_DISTANCE_CONSIDERED_THREAT = 3
-    if isGhost and scaredTimer <= (distance(game_state, my_agent, enemy_pos) +2):
+    if isGhost and scaredTimer <= (distance(game_state, my_agent, enemy_pos) + 2):
         if distance(game_state, my_agent, enemy_pos) < MIN_DISTANCE_CONSIDERED_THREAT:
             return False
         return True
@@ -455,7 +484,7 @@ def closeThreatEnemies(game_state, my_agent):
             enemy_pos = game_state.get_agent_position(enemy)
             positionsSorted.push(
                 enemy, getCost(my_agent, my_pos, enemy_pos))
-
+    if positionsSorted.isEmpty(): positionsSorted.push(None, 0)
     return positionsSorted
 
 def getPos(game_state, agent):
@@ -478,9 +507,9 @@ def distanceClosestEnemy(game_state, my_agent):
 def thereIsAThreat(game_state, my_agent):
         if game_state != None:
 
-            prev_agent_state = game_state.get_agent_state(my_agent.index)
+            agent_state = game_state.get_agent_state(my_agent.index)
     
-            return prev_agent_state != None and any(is_threat(game_state, my_agent,
+            return agent_state != None and any(is_threat(game_state, my_agent,
                                  enemy) for enemy in my_agent.get_opponents(game_state))
     
 def didAgentReturnFood(prev_agent_state, agent_state):
@@ -489,7 +518,18 @@ def didAgentReturnFood(prev_agent_state, agent_state):
 def didAgentEatFood(prev_agent_state, agent_state):
     return prev_agent_state != None and prev_agent_state.num_carrying < agent_state.num_carrying
     
-
+def isEnemyCloserToExitOfDeadEnd(game_state, agent):
+    currentPos = game_state.get_agent_position(agent.index)
+    enemy = closeThreatEnemies(game_state, agent).pop()
+    if enemy != None:
+        enemy_pos = game_state.get_agent_position(enemy)
+        closer_exit_from_dead_end = agent.nearest_exit_from_ends[currentPos]
+        distance_enemy_to_exit_from_dead_end = agent.get_maze_distance(enemy_pos, closer_exit_from_dead_end)
+        distance_to_exit_from_dead_end = agent.get_maze_distance(currentPos, closer_exit_from_dead_end)
+        if distance_enemy_to_exit_from_dead_end > (distance_to_exit_from_dead_end + 1):
+            return False
+        return True
+    return False
     
 #################  problems and heuristics  ####################
 
@@ -543,29 +583,26 @@ class FoodOffense():
             prev_agent_state = prev_game_state.get_agent_state(agent.index)
             is_dead_end = currentPos in agent.dead_ends
             is_chased = thereIsAThreat(game_state, agent)
-            
 
             if not is_chased:
                 return didAgentEatFood(prev_agent_state, currentAgent)
             elif is_dead_end:
-                enemy = closeThreatEnemies(game_state, agent).pop()
-                enemy_pos = game_state.get_agent_position(enemy)
-                distance_from_enemy = distance(game_state, agent, enemy_pos)
-                closer_exit_from_dead_end = agent.nearest_exit_from_ends[currentPos]
-                distance_to_exit_from_dead_end = agent.get_maze_distance(currentPos, closer_exit_from_dead_end)
-                if distance_from_enemy > (distance_to_exit_from_dead_end +1):
+                if isEnemyCloserToExitOfDeadEnd(game_state, agent):
                     return didAgentEatFood(prev_agent_state, currentAgent)
         return False
     
     def isGoalStateReturnSafeOrEatingCapsule(self, state, agent = None):
         current_game_state = state[0]
+        current_pos = current_game_state.get_agent_position(agent.index)
+
         if self.startingGameState.get_score() < current_game_state.get_score():
             return True
+        elif current_pos in agent.boundary_pos:
+            return True
         
-        prevCapsules = len(agent.get_capsules(self.startingGameState))
-        currentCapsules = len(agent.get_capsules(current_game_state))
+        prevCapsules = agent.get_capsules(self.startingGameState)
 
-        hasEatenCapsule = prevCapsules > currentCapsules
+        hasEatenCapsule = current_pos in prevCapsules
         if hasEatenCapsule:          
             return True
         
@@ -784,7 +821,7 @@ def aStarSearch(problem, heuristic=None, agent = None, goal = None):
     # his position
     # his path from the initial state
     # his total cost to reach that position
-    start_node = (problem.getStartState(), [], 0)
+    start_node = (problem.getStartState(),  [], 0)
 
     distributions = [util.Counter()]
     
@@ -800,13 +837,13 @@ def aStarSearch(problem, heuristic=None, agent = None, goal = None):
             heur = heuristic(node)
             my_pos = node[0].get_agent_position(agent.index)
             distributions[0][my_pos] = heur
-            
+
             showAndNormalize([distributions[0].copy()], agent)
-            
+
             return path
 
         # the algorithm control if the node is being expanded before
-        if node not in expanded_nodes:
+        if node[:1] not in expanded_nodes:
             expanded_nodes.append(node[:1])
 
             # if not the algorithm search in his successor and insert them in the frontier to be expanded
