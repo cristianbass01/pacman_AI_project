@@ -525,7 +525,6 @@ class FoodOffense():
 
                 # update state:
                 for enemy_index, direction in zip(adjacent_ghost_indexs, ghost_kill_directions):
-                    self.expanded += 1
                     next_game_state = next_game_state.generate_successor(
                         enemy_index, direction)
 
@@ -562,21 +561,76 @@ class defensiveAgent(agentBase):
         # The below value is the initial value given to the counter 
         # when missing food is found
         self.initMissingFoodCounter = 4
-        # This is the target gotten the previous time we found missing food
-        self.missingFoodPrevTarget = None
+        # This is the current target and actions
+        self.target = None
+        self.actions = None
+
+        self.possibleEnemyEntryPositions = None
+        self.boundaryPositions = None
 
         self.enemyEntered = False
         self.boundaryGoalPosition = None
 
+    def getMissingFoodPosition(self):
+
+        prevFood = self.get_food_you_are_defending(
+                self.get_previous_observation()).as_list() \
+            if self.get_previous_observation() is not None else list()
+
+        currFood = self.get_food_you_are_defending(self.startingGameState).as_list()
+
+        if prevFood:
+            if len(prevFood) > len(currFood):
+                foodEaten = list(set(prevFood) - set(currFood))
+                if foodEaten:
+                    return foodEaten
+        return None
+
+    def closestPositionWithPriorityQueue(self, fromPos, positions):
+        positionsSorted = util.PriorityQueue()
+        while not positions.isEmpty():
+            toPos = positions.pop()
+            positionsSorted.push(
+                toPos, self.get_maze_distance(toPos, fromPos))
+        return positionsSorted
+
+    def closestPosition(self, fromPos, positions):
+        positionsSorted = util.PriorityQueue()
+        for toPos in positions:
+            positionsSorted.push(
+                toPos, self.get_maze_distance(toPos, fromPos))
+        return positionsSorted
+
+    def goalReached(self):
+        return self.actions == []
+
+    def isFoodMissing(self):
+        return self.getMissingFoodPosition() is not None
+
+    def enemyVisible(self, enemy_idx, gameState):
+        return gameState.get_agent_position(enemy_idx) is not None
+    
+    def anyEnemyVisible(self, game_state):
+        enemies = self.get_opponents(game_state)
+        return any([self.enemyVisible(idx, game_state) for idx in enemies])
+
     def choose_action(self, game_state):
+        # If we see an enemy or some food goes mising or a goal is reached we need to 
+        # recalculate
+        change = self.anyEnemyVisible(game_state) or self.isFoodMissing() or \
+            self.actions == None or self.goalReached()
 
-        problem = defendTerritoryProblem(startingGameState=game_state, captureAgent=self)
-
-        # actions = search.breadthFirstSearch(problem)
-        # actions = aStarSearch(problem, heuristic=defensiveHeuristic)
-        actions = aStarSearch(problem, heuristic=self.defensiveHeuristic)
+        if change:
+            problem = defendTerritoryProblem(startingGameState=game_state,
+                                        captureAgent=self)
+            actions = aStarSearch(problem, heuristic=self.defensiveHeuristic)
+        
+        # I reduce the counter here so that it is reduced even if a change has
+        # not occured
+        self.missingFoodCounter -= 1
 
         if actions != None:
+            self.actions = actions[1:]
             return actions[0]
         else:
             return random.choice(game_state.get_legal_actions(self.index))
@@ -586,14 +640,30 @@ class defensiveAgent(agentBase):
         A heuristic function estimates the cost from the current state to the nearest
         goal in the provided SearchProblem.  This heuristic is trivial.
         """
+        BOUNDRY_DISTANCE_MUL = 10
+        GOAL_DISTANCE_MUL = 5
+        MISSING_FOOD_POSITION_PENALTY = 20
+
         game_state = state[0]
         currGoalDistance = state[1]
-
+        agentPos = game_state.get_agent_position(problem.captureAgent.index)
         succGoalDistance = problem.captureAgent.get_maze_distance(
-            problem.GOAL_POSITION, game_state.get_agent_position(problem.captureAgent.index))
+            problem.GOAL_POSITION, agentPos)
+
+        closestBoundary = self.closestPosition(agentPos, self.boundaryPositions).pop()
+        
+        boundaryDistance = problem.captureAgent.get_maze_distance(
+            closestBoundary, agentPos)
+        
+        heuristic = 0
+
+        heuristic += agentPos == problem.captureAgent.missingFoodPosisition * MISSING_FOOD_POSITION_PENALTY
+        heuristic += boundaryDistance * BOUNDRY_DISTANCE_MUL 
+
+        heuristic += succGoalDistance * GOAL_DISTANCE_MUL
 
         if succGoalDistance < currGoalDistance:
-            return 0
+            return heuristic
         else:
             return float('inf')
 
@@ -608,7 +678,6 @@ class DefenceModes(Enum):
 class defendTerritoryProblem():
     def __init__(self, startingGameState, captureAgent):
         self.NthClosestFood = 1
-        self.expanded = 0
         self.startingGameState = startingGameState
         self.captureAgent = captureAgent
         self.enemies = self.captureAgent.get_opponents(startingGameState)
@@ -624,8 +693,9 @@ class defendTerritoryProblem():
             
         self.myPreciousFood = self.captureAgent.get_food_you_are_defending(startingGameState)
 
-        (self.viableBoundaryPositions,
-         self.possibleEnemyEntryPositions) = self.getViableBoundaryPositions()
+        (self.captureAgent.boundaryPositions,
+         self.captureAgent.possibleEnemyEntryPositions) = self.getViableBoundaryPositions()
+
 
         self.GOAL_POSITION = self.getGoalPosition()
         self.goalDistance = self.captureAgent.get_maze_distance(self.GOAL_POSITION,
@@ -681,13 +751,13 @@ class defendTerritoryProblem():
         the NthClosestFood which we return. If we reach the 
         final food before that we return it
         """
-        closestFoodPositions = self.closestPosition(
+        closestFoodPositions = self.captureAgent.closestPosition(
             enemyPosition, self.myPreciousFood.as_list())
         closestFoodPosition = closestFoodPositions.pop()
         for _ in range(self.NthClosestFood - 1):
             if closestFoodPositions.isEmpty():
                 return closestFoodPosition
-            closestFoodPositions =  self.closestPositionWithPriorityQueue(
+            closestFoodPositions =  self.captureAgent.closestPositionWithPriorityQueue(
                                                 closestFoodPosition,
                                                 closestFoodPositions)
             closestFoodPosition = closestFoodPositions.pop()
@@ -711,7 +781,7 @@ class defendTerritoryProblem():
         return min_pos
 
     def getGoalPositionIfEnemyLocationUnknown(self):
-        missingFoodPosition = self.getMissingFoodPosition()
+        missingFoodPosition = self.captureAgent.getMissingFoodPosition()[0]
 
         # If we have a previously missing food try to figure out a path pacman
         # might take and intercept him 
@@ -728,7 +798,6 @@ class defendTerritoryProblem():
 
         # If this turn no new missing food is eaten try to reuse the old target
         if self.captureAgent.missingFoodCounter > 0:
-            self.captureAgent.missingFoodCounter -= 1
             return self.captureAgent.prevMissingFoodTarget
 
         return self.getProbableEnemyEntryPointBasedOnFood()
@@ -761,43 +830,29 @@ class defendTerritoryProblem():
         # If no enemy agent is a pacman try to take some food
         return self.getClosestFood()
 
-    def closestPositionWithPriorityQueue(self, fromPos, positions):
-        positionsSorted = util.PriorityQueue()
-        while not positions.isEmpty():
-            toPos = positions.pop()
-            positionsSorted.push(
-                toPos, self.captureAgent.get_maze_distance(toPos, fromPos))
-        return positionsSorted
-
-    def closestPosition(self, fromPos, positions):
-        positionsSorted = util.PriorityQueue()
-        for toPos in positions:
-            positionsSorted.push(
-                toPos, self.captureAgent.get_maze_distance(toPos, fromPos))
-        return positionsSorted
 
     def getProbableEnemyEntryPoint(self):
         positionsSorted = util.PriorityQueue()
-        positionsSorted = self.closestPosition(
-            self.agentPosition, self.possibleEnemyEntryPositions)
+        positionsSorted = self.captureAgent.closestPosition(
+            self.agentPosition, self.captureAgent.possibleEnemyEntryPositions)
 
         while not(positionsSorted.isEmpty()):
             possibleEntry = positionsSorted.pop()
             if self.captureAgent.get_maze_distance(self.agentPosition, possibleEntry) > 5:
                 return possibleEntry
-        return random.choice(self.possibleEnemyEntryPositions)
+        return random.choice(self.captureAgent.possibleEnemyEntryPositions)
 
     def getProbableEnemyEntryPointBasedOnFood(self):
         positionsSorted = util.PriorityQueue()
         bestEnemyPosition = util.PriorityQueue()
         # Which entry point are we closest to
-        positionsSorted = self.closestPosition(
-            self.agentPosition, self.possibleEnemyEntryPositions)
+        positionsSorted = self.captureAgent.closestPosition(
+            self.agentPosition, self.captureAgent.possibleEnemyEntryPositions)
 
         while not(positionsSorted.isEmpty()):
             possibleEntry = positionsSorted.pop()
             if self.captureAgent.get_maze_distance(self.agentPosition, possibleEntry) > 5:
-                closestFoodPosition = self.closestPosition(
+                closestFoodPosition = self.captureAgent.closestPosition(
                     possibleEntry, self.myPreciousFood.as_list()).pop()
                 distancetoToClosestFoodFromPosition = self.captureAgent.get_maze_distance(
                     possibleEntry, closestFoodPosition)
@@ -809,22 +864,8 @@ class defendTerritoryProblem():
         if bestEnemyEntryPosition:
             return bestEnemyEntryPosition
         else:
-            return random.choice(self.possibleEnemyEntryPositions)
+            return random.choice(self.captureAgent.possibleEnemyEntryPositions)
 
-    def getMissingFoodPosition(self):
-
-        prevFood = self.captureAgent.get_food_you_are_defending(
-                self.captureAgent.get_previous_observation()).as_list() \
-            if self.captureAgent.get_previous_observation() is not None else list()
-
-        currFood = self.captureAgent.get_food_you_are_defending(self.startingGameState).as_list()
-
-        if prevFood:
-            if len(prevFood) > len(currFood):
-                foodEaten = list(set(prevFood) - set(currFood))
-                if foodEaten:
-                    return foodEaten[0]
-        return None
 
     def getStartState(self):
         return (self.startingGameState, self.goalDistance, None)
@@ -840,8 +881,6 @@ class defendTerritoryProblem():
             return False
 
     def get_successors(self, state, path = None):
-        self.expanded += 1
-
         game_state = state[0]
 
         actions = game_state.get_legal_actions(self.captureAgent.index)
@@ -853,17 +892,6 @@ class defendTerritoryProblem():
                     goalDistance, game_state), action, 1) for action in actions]
 
         successors = successors_all
-
-        # Add if you want the agent to not be able to leave boundry
-        # for successor in successors_all:
-        #     (xs, ys) = successor[0][0].get_agent_position(
-        #         self.captureAgent.index)
-        #     if self.captureAgent.red:
-        #         if xs <= self.boundary:
-        #             successors.append(successor)
-        #     else:
-        #         if xs >= self.boundary:
-        #             successors.append(successor)
 
         return successors
 
