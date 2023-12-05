@@ -5,14 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Current File",
+            "name": "Pacman A_Star_team/myOffenceTeam",
             "type": "python",
             "request": "launch",
             "program": "pacman-contest/src/contest/capture.py",
-            "args": ["-r", 
-                "pacman-contest/src/contest/agents/A_Star_team/myOffenseTeam.py", 
-                "-b", 
-                "pacman-contest/src/contest/agents/FINAL_TEAM/myTeam.py"],
+            "args": [
+                "-r",
+                "pacman-contest/src/contest/agents/A_Star_team/myOffenseTeam.py",
+                "-b",
+                "pacman-contest/src/contest/agents/FINAL_TEAM/myTeam.py"
+                
+            ],
             "console": "integratedTerminal",
             "justMyCode": true
         }
