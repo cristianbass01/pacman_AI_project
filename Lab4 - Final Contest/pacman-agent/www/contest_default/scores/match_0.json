@@ -4,9 +4,15 @@
             "Red",
             "Blue",
             "defaultCapture.lay",
+<<<<<<< Updated upstream
             1,
             "Red",
             80.0,
+=======
+            7,
+            "Blue",
+            168.0,
+>>>>>>> Stashed changes
             0
         ]
     ],
@@ -16,6 +22,7 @@
     "max_steps": 1200,
     "teams_stats": {
         "Blue": [
+<<<<<<< Updated upstream
             0.0,
             0,
             0,
@@ -32,6 +39,24 @@
             0,
             0,
             1
+=======
+            100.0,
+            3,
+            1,
+            0,
+            0,
+            0,
+            7
+        ],
+        "Red": [
+            0.0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0
+>>>>>>> Stashed changes
         ]
     }
 }

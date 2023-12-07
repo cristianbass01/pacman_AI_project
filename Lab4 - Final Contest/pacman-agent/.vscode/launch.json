@@ -11,9 +11,9 @@
             "program": "pacman-contest/src/contest/capture.py",
             "args": [
                 "-r",
-                "pacman-contest/src/contest/agents/A_Star_team/myOffenseTeam_copy_2.py",
+                "pacman-contest/src/contest/agents/A_Star_team/myTeam.py",
                 "-b",
-                "pacman-contest/src/contest/agents/FINAL_TEAM/myTeam.py"
+                "pacman-contest/src/contest/agents/pacmancontest-main/myTeam.py"
                 
             ],
             "console": "integratedTerminal",
