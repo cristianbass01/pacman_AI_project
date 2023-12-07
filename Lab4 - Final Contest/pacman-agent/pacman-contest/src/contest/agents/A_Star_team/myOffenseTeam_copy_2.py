@@ -161,45 +161,81 @@ class offensiveAgent(agentBase):
         my_pos = game_state.get_agent_state(self.index).get_position()
         
         # Enemy
-        enemies = [gameState.get_agent_state(i) for i in self.get_opponents(gameState)]
+        enemies = [game_state.get_agent_state(i) for i in self.get_opponents(game_state)]
         ghost_distances = [self.get_maze_distance(my_pos, enemy.get_position()) for enemy in enemies if not enemy.is_pacman and enemy.get_position() != None]
         
         are_scared = [a.scared_timer > 8 for a in enemies if not a.is_pacman and a.get_position() != None]
-        exist_threat = thereIsAThreat(game_state, self)
+        #exist_threat = thereIsAThreat(game_state, self)
         prev_game_state = self.get_previous_observation()
-        if prev_game_state != None:
-            used_to_be_threat = thereIsAThreat(prev_game_state, self)
-        else: 
-            used_to_be_threat = False
+        #if prev_game_state != None:
+        #    used_to_be_threat = thereIsAThreat(prev_game_state, self)
+        #else: 
+        #    used_to_be_threat = False
         
 
         # Food
-        current_food = len(self.get_food(game_state).as_list())
-        food_changed = self.prev_food > current_food
+        food_list = self.get_food(game_state).as_list()
         is_carrying_food = agent_state.num_carrying > 0
         
         # Capsule
         capsules = self.get_capsules(game_state)
-        capsule_distances = [self.get_maze_distance(my_pos, cap) for cap in capsules]
-        min_capsule_distance = min(capsule_distances)
+        if capsules:
+            capsule_distances = [self.get_maze_distance(my_pos, cap) for cap in capsules]
+            min_capsule_distance = min(capsule_distances)
 
         problem = FoodOffense(startingGameState=game_state, captureAgent=self)
         
 
+        if len(food_list) > 0:
+            nearest_food = min(food_list, key=lambda x: self.get_maze_distance(my_pos, x))
+            nearest_food_distance = self.get_maze_distance(my_pos, nearest_food)
+        
+        is_scared = False
 
+        if no_moves_left:
+            actions = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target=nearest_food)
+            self.next_moves = actions
 
+        if len(ghost_distances) > 0:
+            min_ghost_distance = min(ghost_distances)
+            min_ghost_distance_index = ghost_distances.index(min_ghost_distance)
+            is_scared = are_scared[min_ghost_distance_index]
+        else:
+            min_ghost_distance = 1000
 
-
-        return next_action
+        if capsules and (len(ghost_distances) and min_ghost_distance < 5 or min_capsule_distance < 2):   # Adjust distance threshold as needed
+            best_capsule = min(capsules, key=lambda cap: self.get_maze_distance(my_pos, cap))
+            path_to_food = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target= best_capsule)
+            return path_to_food[0] if path_to_food else Directions.STOP
+        
+        carrying_food = game_state.get_agent_state(self.index).num_carrying
+        food_limit = 5
+        
+        if is_scared: 
+            food_limit = 10
+        
+        ispac = game_state.get_agent_state(self.index).is_pacman
+        
+        if game_state.data.timeleft > 50 and carrying_food <= food_limit:
+            if len(food_list) > 2 and (not ispac or is_scared or (nearest_food_distance < min_ghost_distance and abs(nearest_food_distance - min_ghost_distance) > 3)):
+                path_to_food = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target=nearest_food)
+                return path_to_food[0] if path_to_food else Directions.STOP
+            else:
+                path_to_home = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target=self.start)
+                return path_to_home[0] if path_to_home else Directions.STOP
+        else:       
+            path_to_home = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target=self.start)
+            return path_to_home[0] if path_to_home else Directions.STOP
+    
     
 
 ################# Heuristics ###################################
 
-    def heuristicToPos(self, data)
+    def heuristicToPos(self, data):
         game_state = data['game']
-        enemies = [gameState.get_agent_state(i) for i in self.get_opponents(gameState)]
-        num_carrying = gameState.get_agent_state(self.index).num_carrying
-        ghost_distances = [self.get_maze_distance(start, enemy.get_position()) for enemy in enemies if not enemy.is_pacman and enemy.get_position() != None]
+        enemies = [game_state.get_agent_state(i) for i in self.get_opponents(game_state)]
+        num_carrying = game_state.get_agent_state(self.index).num_carrying
+        ghost_distances = [self.get_maze_distance(self.start, enemy.get_position()) for enemy in enemies if not enemy.is_pacman and enemy.get_position() != None]
         are_scared = [enemy.scared_timer > 5 for enemy in enemies if not enemy.is_pacman and enemy.get_position() != None]
         min_ghost_distance = 100
         if len(ghost_distances) > 0:
@@ -208,9 +244,25 @@ class offensiveAgent(agentBase):
             is_scared = are_scared[min_ghost_distance_index]
             if is_scared:
                 min_ghost_distance = 0
-        return self.get_maze_distance(data['pos'], self.target) + min_ghost_distance * num_carrying
+        return self.get_maze_distance(data['pos'], data['target']) + min_ghost_distance * num_carrying
 
+    def eatingFoodHeuristic(self, data):
+        # MIN HEURISTIC:
+        # -11 if there was food in the current pos
+        # ascending following the distance to the food
+        game_state = data['game']
+        DISTANCE_FOOD_MUL = 10
 
+        offence_food_pos = self.get_food(game_state).as_list()
+        current_pos = game_state.get_agent_position(self.index)
+        
+        prev_game_state = self.get_previous_observation()
+        if prev_game_state != None:
+            if prev_game_state.has_food(current_pos[0], current_pos[1]):
+                return - (DISTANCE_FOOD_MUL + 1)
+
+        distanceClosestFood = min([distance(game_state, self, food_pos) for food_pos in offence_food_pos])
+        return - 1 / (distanceClosestFood+1) * DISTANCE_FOOD_MUL
     
 #################  problems and heuristics  ####################
 
@@ -232,7 +284,6 @@ class FoodOffense():
         self.startingGameState = startingGameState
         # Need to ignore previous score change, as everything should be considered relative to this state
         self.startingGameState.data.score_change = 0
-        self.target = self.startingGameState.get_agent_position(self.index)
         
 
     def getStartState(self):
@@ -240,7 +291,7 @@ class FoodOffense():
 
         return self.startingGameState.get_agent_position(self.index)
         
-    def getStartData(self):
+    def getStartData(self, target = None):
         # This needs to return the state information to being with
         data = util.Counter()
         data['prev_game'] = None
@@ -249,11 +300,12 @@ class FoodOffense():
         data['cost'] = 0
         data['pos'] = self.startingGameState.get_agent_position(self.index)
         data['agent'] = self.captureAgent
+        data['target'] = target
 
         return data
 
     def isGoalStatePosition(self, data):
-        if data['pos'] == self.target:
+        if data['pos'] == data['target']:
             return True
         return False
 
@@ -291,11 +343,12 @@ class FoodOffense():
             if not fut_pos in enemy_positions:
                 data = util.Counter()
                 data['prev_game'] = game_state
-                data['game'] = game_state.generate_successor(self.index, action)
+                data['game'] = game_state.generate_successor(self.index, next_action)
                 data['action'] = next_action
                 data['cost'] = 1
                 data['pos'] = fut_pos
                 data['agent'] = self.captureAgent
+                data['target'] = old_data['target']
                 successors.append(data)
 
         return successors
@@ -305,7 +358,7 @@ class FoodOffense():
 
 
 
-def aStarSearch(problem, heuristic=None, goal = None):
+def aStarSearch(problem, heuristic=None, goal = None, target = None):
     """Search the node that has the lowest combined cost and heuristic first."""
     # create a list to store the expanded nodes that do not need to be expanded again
     expanded_nodes = set()
@@ -319,7 +372,7 @@ def aStarSearch(problem, heuristic=None, goal = None):
     # his position
     # his path from the initial state
     # his total cost to reach that position
-    start_node = (problem.getStartState(), problem.getStartData(),  [], 0)
+    start_node = (problem.getStartData(target),  [], 0)
 
     distributions = [util.Counter()]
     
@@ -327,7 +380,7 @@ def aStarSearch(problem, heuristic=None, goal = None):
     # as first node this is irrelevant
     frontier.push(start_node, 0)
     while not frontier.isEmpty():
-        (node, data, path, cost) = frontier.pop()
+        (data, path, cost) = frontier.pop()
 
         # if this node is in goal state it return the path to reach that state
         if goal(data):
@@ -339,7 +392,7 @@ def aStarSearch(problem, heuristic=None, goal = None):
             fut_cost = cost + new_data['cost']
             new_pos = new_data['pos']
 
-            if new_pos not in expanded_nodes or new_cost < min_cost[new_pos]:
+            if new_pos not in expanded_nodes or fut_cost < min_cost[new_pos]:
                 min_cost[new_pos] = fut_cost
                 expanded_nodes.add(new_pos)
                 
@@ -351,7 +404,7 @@ def aStarSearch(problem, heuristic=None, goal = None):
                 
                 updateDistributions(distributions, data, heuristic, show = False)
                     
-                frontier.push((new_pos, new_data, total_path, fut_cost), priority)
+                frontier.push((new_data, total_path, fut_cost), priority)
 
 def showAndNormalize(distributions, agent):
     distributions[0].incrementAll(distributions[0].keys(), -min(distributions[0].values()))
