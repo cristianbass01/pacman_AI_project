@@ -13,7 +13,9 @@
                 "-r",
                 "pacman-contest/src/contest/agents/A_Star_team/myTeam.py",
                 "-b",
-                "pacman-contest/src/contest/agents/pacmancontest-main/myTeam.py"
+                "-l",
+                "RANDOM"
+                "pacman-contest/src/contest/agents/FINAL_TEAM/myTeam.py",
                 
             ],
             "console": "integratedTerminal",

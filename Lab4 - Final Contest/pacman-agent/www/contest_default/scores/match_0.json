@@ -3,6 +3,7 @@
         [
             "Red",
             "Blue",
+<<<<<<< Updated upstream
             "defaultCapture.lay",
 <<<<<<< Updated upstream
             1,
@@ -13,31 +14,43 @@
             "Blue",
             168.0,
 >>>>>>> Stashed changes
+=======
+            "RANDOM95888230",
+            5,
+            "Blue",
+            85.0,
+>>>>>>> Stashed changes
             0
         ]
     ],
     "layouts": [
-        "defaultCapture.lay"
+        "RANDOM95888230"
     ],
     "max_steps": 1200,
     "teams_stats": {
         "Blue": [
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+            0.0,
+            0,
+=======
+            100.0,
+            3,
+            1,
+>>>>>>> Stashed changes
+            0,
+            0,
+            0,
+            5
+        ],
+        "Red": [
             0.0,
             0,
             0,
             0,
             1,
             0,
-            0
-        ],
-        "Red": [
-            100.0,
-            3,
-            1,
-            0,
-            0,
-            0,
+<<<<<<< Updated upstream
             1
 =======
             100.0,
@@ -55,6 +68,9 @@
             0,
             1,
             0,
+            0
+>>>>>>> Stashed changes
+=======
             0
 >>>>>>> Stashed changes
         ]
