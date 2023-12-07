@@ -35,7 +35,7 @@ from contest.capture import GameState
 
 # this is the entry points to instanciate you agents
 def create_team(first_index, second_index, is_red,
-                first='offensiveAgent', second='defensiveAgent', num_training=0):
+                first='offensiveAgent', second='offensiveAgent', num_training=0):
 
     # capture agents must be instanciated with an index
     # time to compute id 1 second in real game
@@ -62,12 +62,20 @@ class agentBase(CaptureAgent):
         self.boundary_pos = None
         self.danger_pos = None
 
-        self.next_moves = None
+        self.actions = None
 
         self.last_seen_enemy_pos = None
 
         self.dead_ends = None
         self.nearest_exit_from_ends = None
+    
+    def final(self, state):
+        "Called at the end of each game."
+        # call the super-class final method
+        self.actions = None
+        CaptureAgent.final(self, state)
+        # print(self.weights)
+        # did we finish training?
 
     def register_initial_state(self, game_state):
         self.start = game_state.get_agent_position(self.index)
@@ -156,7 +164,7 @@ class offensiveAgent(agentBase):
         # General
         agent_state = game_state.get_agent_state(self.index)
         start = self.start == game_state.get_agent_position(self.index)
-        no_moves_left = self.next_moves == None or (self.next_moves != None and len(self.next_moves) == 0)
+        no_moves_left = self.actions == None or len(self.actions) == 0
         my_pos = game_state.get_agent_state(self.index).get_position()
         
         # Enemy
@@ -432,9 +440,6 @@ class defensiveAgent(agentBase):
         # The below value is the initial value given to the counter 
         # when missing food is found
         self.initMissingFoodCounter = 4
-        # This is the current target and actions
-        self.target = None
-        self.actions = None
 
         self.possibleEnemyEntryPositions = None
         self.boundaryPositions = None
@@ -487,6 +492,8 @@ class defensiveAgent(agentBase):
     
     def agentDied(self, game_state):
         prev_game_state = self.get_previous_observation()
+        if prev_game_state == None:
+            return False
         prevPos = prev_game_state.get_agent_position(self.index)
         currPos = game_state.get_agent_position(self.index)
         distance = self.get_maze_distance(
@@ -496,6 +503,8 @@ class defensiveAgent(agentBase):
     
     def capsuleEaten(self, game_state):
         prev_game_state = self.get_previous_observation()
+        if prev_game_state == None:
+            return False
         prev_capsule = self.get_capsules_you_are_defending(prev_game_state)
         capsulesNow = self.get_capsules_you_are_defending(game_state)
         
