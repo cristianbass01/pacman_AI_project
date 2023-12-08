@@ -374,14 +374,18 @@ class agentBase(CaptureAgent):
             else:
                 min_ghost_distance = 100
 
-            best_path_to_food, chosen_food = self.calculatePath(problem, self.eatingFoodHeuristic, problem.isGoalStateEatingFood)
+            if len(food_list) > 0:
+                best_path_to_food, chosen_food = self.calculatePath(problem, self.eatingFoodHeuristic, problem.isGoalStateEatingFood)
+            else:
+                best_path_to_food = []
+                chosen_food = None
 
             if is_enemy_scared_enough: 
                 food_limit = len(food_list) - 2
             
             im_ghost = isGhostByIndex(game_state, self.index)
             
-            if chosen_food in self.dead_ends and closer_enemy_index != None and (len(food_list) > 2) and (game_state.data.timeleft > (min_safe_pos_distance + 5)  and food_carrying <= food_limit):
+            if (len(food_list) > 2) and chosen_food in self.dead_ends and closer_enemy_index != None and (game_state.data.timeleft > (min_safe_pos_distance + 5)  and food_carrying <= food_limit):
                 distance_to_food = distance(game_state, self, chosen_food)
                 distance_food_to_exit = self.get_maze_distance(my_pos, self.nearest_exit_from_ends[chosen_food])
                 enemy_pos = game_state.get_agent_position(closer_enemy_index)
@@ -522,7 +526,10 @@ class agentBase(CaptureAgent):
                 if is_dangerous:
                     heur += 1/ (distance_to_enemy+1) * DISTANCE_ENEMY_MUL
 
-        distanceClosestFood = min([distance(game_state, self, food_pos) for food_pos in offence_food_pos])
+        if len(offence_food_pos) > 0:
+            distanceClosestFood = min([distance(game_state, self, food_pos) for food_pos in offence_food_pos])
+        else:
+            distanceClosestFood = 0
         return - 1 / (distanceClosestFood+1) * DISTANCE_FOOD_MUL + heur
     
     def returnSafeHeuristic(self, data):
