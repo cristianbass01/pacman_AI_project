@@ -115,6 +115,7 @@ class agentBase(CaptureAgent):
 
         self.possibleEnemyEntryPositions = None
         self.boundaryPositions = None
+        self.defencePositions = 0
 
         self.boundaryGoalPosition = None
     
@@ -388,7 +389,7 @@ class agentBase(CaptureAgent):
                     distance_ghost_to_exit = self.get_maze_distance(enemy_pos, self.nearest_exit_from_ends[chosen_food])
                 else:
                     distance_ghost_to_exit = 1000
-                    
+
                 if distance_to_food + distance_food_to_exit + 1 < distance_ghost_to_exit:
                     self.actions = best_path_to_food
                 else:
@@ -417,7 +418,8 @@ class agentBase(CaptureAgent):
                 
     
         if self.actions == None or self.actions == [] or is_stuck or not self.actions[0] in game_state.get_legal_actions(self.index):
-            print('Random action taken')
+            #print('Random action taken')
+            self.actions = []
             return getRandomSafeAction(game_state, self)
         
         return self.actions.pop(0)
@@ -885,31 +887,50 @@ class defendTerritoryProblem():
             self.captureAgent.index)
         self.gridWidth = self.captureAgent.get_food(startingGameState).width
         self.gridHeight = self.captureAgent.get_food(startingGameState).height
-        if self.captureAgent.red:
-            self.boundary = int(self.gridWidth / 2) - 1
-        else:
-            self.boundary = int(self.gridWidth / 2)
-            
         self.myPreciousFood = self.captureAgent.get_food_you_are_defending(startingGameState)
-
         self.myPreciousCapsule = self.captureAgent.get_capsules_you_are_defending(startingGameState)
 
+        if self.captureAgent.red:
+            self.boundary = int(self.gridWidth / 2) - 1
+            closestBorderFood = max(self.myPreciousFood, key=lambda x: x[0])[0]
+        else:
+            self.boundary = int(self.gridWidth / 2)
+            closestBorderFood = min(self.myPreciousFood, key=lambda x: x[0])[0]
+            
         (self.captureAgent.boundaryPositions,
-         self.captureAgent.possibleEnemyEntryPositions) = self.getViableBoundaryPositions()
+         self.captureAgent.possibleEnemyEntryPositions) = self.getViableBoundaryPositions(0)
+        self.captureAgent.defencePositions = self.captureAgent.boundaryPositions
+        offset = 1
+
+        if self.captureAgent.red:
+            while len(self.captureAgent.defencePositions) > self.gridWidth/2 and \
+                self.gridWidth - offset >= closestBorderFood:
+                offset += 1
+                (self.captureAgent.defencePositions,
+                self.captureAgent.possibleEnemyEntryPositions) = \
+                      self.getViableBoundaryPositions(offset)
+        else:
+            while len(self.captureAgent.defencePositions) > self.gridWidth/2 and \
+                self.gridWidth + offset <= closestBorderFood:
+                offset += 1
+                (self.captureAgent.defencePositions,
+                self.captureAgent.possibleEnemyEntryPositions) = \
+                      self.getViableBoundaryPositions(offset)
 
 
         self.GOAL_POSITION = self.getGoalPosition()
         self.goalDistance = self.captureAgent.get_maze_distance(self.GOAL_POSITION,
                                                              self.agentPosition)
 
-    def boundaryIsViable(self, boundryWidth, nextOffset, boundryHeight):
+    def boundaryIsViable(self, boundryWidth, offset, nextOffset, boundryHeight):
         """Checks if a boundry can be used to enter our territory. In other words
          there are no walls stopping an enemy pacman from entering or exiting """
-        positionNotAWall = not(self.walls[boundryWidth][boundryHeight]) 
+        positionNotAWall = not(self.walls[boundryWidth + offset][boundryHeight]) 
         adjacentPositionNotAWall = not(self.walls[boundryWidth + nextOffset][boundryHeight])
         return positionNotAWall and adjacentPositionNotAWall
 
-    def getViableBoundaryPositions(self):
+    # offset is used to check not only boundry positions
+    def getViableBoundaryPositions(self, offset):
         myPos = self.startingGameState.get_agent_position(self.captureAgent.index)
         boundary = self.boundary
         boundaryPositions = []
@@ -920,7 +941,10 @@ class defendTerritoryProblem():
             # for red is +1 and for blue -1
             # We want to get previous or next cell depending on the team
             nextBoundryWidthOffset = isRed - (not isRed)
-            if self.boundaryIsViable(boundary, nextBoundryWidthOffset,
+            # multiplied by nextBoundryWidhtOffset and (-1) because we want 
+            # the offset to go to our territory
+            if self.boundaryIsViable(boundary, (-1) * nextBoundryWidthOffset * offset,
+                                nextBoundryWidthOffset,
                                 boundaryHeight):
                 if (boundary, boundaryHeight) != myPos:
                     boundaryPositions.append((boundary, boundaryHeight))
@@ -956,8 +980,8 @@ class defendTerritoryProblem():
         
         return closestFoodPosition
 
-    def getRandomBoundaryPos(self):
-        return random.choice(self.captureAgent.boundaryPositions)
+    def getRandomDefencePos(self):
+        return random.choice(self.captureAgent.defencePositions)
 
     def getGoalPositionIfEnemyLocationUnknown(self):
         missingFoodPosition = self.captureAgent.getMissingFoodPosition(self.startingGameState)
@@ -1008,7 +1032,7 @@ class defendTerritoryProblem():
                     return self.getGoalPositionIfEnemyLocationUnknown()
 
         # If no enemy agent is a pacman try to take some food
-        return self.getRandomBoundaryPos()
+        return self.getRandomDefencePos()
 
     def getProbableEnemyEntryPointBasedOnFood(self):
         positionsSorted = util.PriorityQueue()
