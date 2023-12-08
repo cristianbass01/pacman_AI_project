@@ -13,12 +13,9 @@
                 "-r",
                 "pacman-contest/src/contest/agents/A_Star_team/myODTeam.py",
                 "-b",
-                "pacman-contest/src/contest/agents/FINAL_TEAM/myTeam.py",
+                "pacman-contest/src/contest/agents/A_Star_team/myTeamDelivered.py",
                 "-l",
-                "RANDOM",
-                "-n",
-                "10",
-                "-q"
+                "RANDOM"
             ],
             "console": "integratedTerminal",
             "justMyCode": true

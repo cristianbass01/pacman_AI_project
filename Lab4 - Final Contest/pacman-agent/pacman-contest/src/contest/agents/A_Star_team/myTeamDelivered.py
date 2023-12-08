@@ -41,29 +41,7 @@ def create_team(first_index, second_index, is_red,
     # time to compute id 1 second in real game
     return [eval(first)(first_index), eval(second)(second_index)]
 
-from functools import wraps
-import time
-from collections import defaultdict
-import numpy as np
 
-#times = defaultdict(list)
-
-"""
-def timeit(func):
-    @wraps(func)
-    def timeit_wrapper(*args, **kwargs):
-        N = 1 if func.__name__ in ['_init_', 'register_initial_state'] else 100
-        start_time = time.perf_counter()
-        result = func(*args, **kwargs)
-        end_time = time.perf_counter()
-        total_time = end_time - start_time
-        times[func.__name__].append(total_time)
-        if len(times[func.__name__]) % N == 0:
-           print(f'Function {func.__name__} took {np.mean(times[func.__name__]):.4f} seconds on average over the last {len(times[func.__name__])} calls')
-            print(f'Function {func.__name__} took {np.max(times[func.__name__]):.4f} seconds on maximum over the last {len(times[func.__name__])} calls')
-        return result
-    return timeit_wrapper
-"""
 class agentBase(CaptureAgent):
     """
     A base class for reflex agents that chooses score-maximizing actions
@@ -153,7 +131,7 @@ class agentBase(CaptureAgent):
     
     def anyEnemyVisible(self, game_state):
         enemies = self.get_opponents(game_state)
-        return any([self.enemyVisible(idx, game_state) for idx in enemies if game_state.get_agent_state(idx).is_pacman])
+        return any([self.enemyVisible(idx, game_state) for idx in enemies])
     
     def agentDied(self, game_state):
         prev_game_state = self.get_previous_observation()
@@ -165,21 +143,13 @@ class agentBase(CaptureAgent):
             prevPos, currPos)
 
         return distance > 2
-    
-    def isBecomeScared(self, game_state):
-        prev_game_state = self.get_previous_observation()
-        if prev_game_state != None:
-            return prev_game_state.get_agent_state(self.index).scared_timer == 0 and game_state.get_agent_state(self.index).scared_timer > 0
-        else:
-            return False
-
 
     def choose_action_defensive(self, game_state):
-        # If we see an enemy or some food goes missing or a goal is reached we need to 
+        # If we see an enemy or some food goes mising or a goal is reached we need to 
         # recalculate
         change = self.anyEnemyVisible(game_state) or self.isFoodMissing(game_state) or \
             self.actions == None or self.goalReached() or self.agentDied(game_state) or \
-            self.capsuleEaten(game_state) or self.isBecomeScared(game_state)
+            self.capsuleEaten(game_state)
 
         if change:
             problem = defendTerritoryProblem(startingGameState=game_state,
@@ -211,20 +181,6 @@ class agentBase(CaptureAgent):
             positionsSorted.push(
                 toPos, self.get_maze_distance(toPos, fromPos))
         return positionsSorted
-    
-    def closestBoundaryPos(self, game_state):
-        positionsSorted = util.PriorityQueue()
-        my_pos = game_state.get_agent_position(self.index)
-
-        for boundary_pos in self.boundary_pos:
-            positionsSorted.push(
-                boundary_pos, distance(game_state, self, boundary_pos))
-
-        closestBoundary = positionsSorted.pop()
-        return closestBoundary
-    
-    def distanceClosestBoundaryPos(self, game_state):
-        return distance(game_state, self, self.closestBoundaryPos(game_state))
     
     def isAtMissingFoodLocation(self, data):
         missingFoodExists = data['agent'].missingFoodLocation != None
@@ -335,30 +291,30 @@ class agentBase(CaptureAgent):
             # Problem
             problem = FoodOffense(startingGameState=game_state, captureAgent=self)
 
-            #best_path_to_safe, _ = self.calculatePathsTo(problem, self.boundary_pos, is_stuck, n_choose = 3)
-            best_path_to_safe, _ = self.calculatePath(problem, self.returnSafeHeuristic, problem.isGoalStateReturnSafe)
-
+            best_path_to_safe, _ = self.calculatePathsTo(problem, self.boundary_pos, is_stuck, n_choose = 3)
+            
             food_carrying = game_state.get_agent_state(self.index).num_carrying
             food_limit = 6
 
-            min_safe_pos_distance = 100
+            min_safe_pos_distance = 1
             if best_path_to_safe != None:
                 min_safe_pos_distance = len(best_path_to_safe)
 
-            is_enemy_scared_enough = True
+            is_enemy_scared_enough = False
 
             closer_enemy_index = None
+
 
             if len(ghost_distances) > 0:
                 min_ghost_distance = min(ghost_distances)
                 closer_enemy_index = ghost_distances.index(min_ghost_distance)
                 scared_less_capsule_dist = scaredTimerByIndex(game_state, closer_enemy_index) < (min_capsule_distance + 1)
                 is_enemy_scared_enough = scaredTimerByIndex(game_state, closer_enemy_index) > (min_safe_pos_distance + 1)
-                enemy_pos = game_state.get_agent_position(closer_enemy_index)
-                is_enemy_closer_to_capsule = any([distance(game_state, self, capsule) > self.get_maze_distance(enemy_pos, capsule) for capsule in capsules])
             
-                if capsules and (min_ghost_distance < 4 or min_capsule_distance < 2) and scared_less_capsule_dist and not is_enemy_scared_enough and not is_enemy_closer_to_capsule:
-                    self.actions, _ = self.calculatePathsTo(problem, capsules, is_stuck, n_choose=1)
+                if capsules and (min_ghost_distance < 3 or min_capsule_distance < 2) and scared_less_capsule_dist:
+                    closest_capsule = min(capsules, key=lambda cap: self.get_maze_distance(my_pos, cap))
+                    
+                    self.actions, _ = self.calculatePathsTo(problem, [closest_capsule], is_stuck, n_choose=1)
 
                     if self.actions == None or self.actions == []:
                         self.actions = best_path_to_safe
@@ -382,14 +338,14 @@ class agentBase(CaptureAgent):
                 else:
                     food_options = [getClosestFood(game_state, self)]
             
-            best_path_to_food, chosen_food = self.calculatePath(problem, self.eatingFoodHeuristic, problem.isGoalStateEatingFood)
+            best_path_to_food, chosen_food = self.calculatePathsTo(problem, food_options, is_stuck, n_choose=1)
 
             if is_enemy_scared_enough: 
                 food_limit = len(food_list) - 2
             
             im_ghost = isGhostByIndex(game_state, self.index)
             
-            if chosen_food in self.dead_ends and closer_enemy_index != None and (len(food_list) > 2) and (game_state.data.timeleft > (min_safe_pos_distance + 5)  and food_carrying <= food_limit):
+            if chosen_food in self.dead_ends and closer_enemy_index != None and len(food_list) > 2 and (game_state.data.timeleft > (min_safe_pos_distance + 5)  and food_carrying <= food_limit):
                 distance_to_food = distance(game_state, self, chosen_food)
                 distance_food_to_exit = self.get_maze_distance(my_pos, self.nearest_exit_from_ends[chosen_food])
                 enemy_pos = game_state.get_agent_position(closer_enemy_index)
@@ -397,34 +353,34 @@ class agentBase(CaptureAgent):
                 if distance_to_food + distance_food_to_exit + 1 < distance_ghost_to_exit:
                     self.actions = best_path_to_food
                 else:
-                    # Search for other food that is not in a dead_end
-                    new_food = [food for food in food_list if food not in self.dead_ends]
-                    
-                    if new_food == []:
-                        self.actions = best_path_to_safe
-                    else:
-                        chosen_food = [getClosestFood(game_state, self)]
-                        self.actions, _ = self.calculatePathsTo(problem, chosen_food, is_stuck, n_choose = 1)
+                    self.actions = best_path_to_safe
             
                     if self.actions == None or self.actions == []:
                         return getRandomSafeAction(game_state, self)
                     
                     return self.actions.pop(0)
-            elif (im_ghost or is_enemy_scared_enough or food_carrying <= food_limit) and (len(food_list) > 2) and (game_state.data.timeleft > (min_safe_pos_distance + 5)):
+            elif (im_ghost or is_enemy_scared_enough or food_carrying <= food_limit) and len(food_list) > 2 and game_state.data.timeleft > (min_safe_pos_distance + 5):
                 self.actions = best_path_to_food
                 
                 if self.actions == None or self.actions == []:
                     self.actions = best_path_to_safe
             
+                if self.actions == None or self.actions == []:
+                    return getRandomSafeAction(game_state, self)
+                
+                return self.actions.pop(0) 
             else: 
-
                 self.actions = best_path_to_safe
 
                 if self.actions == None or self.actions == []:
                     self.actions = best_path_to_food
                 
+                if self.actions == None or self.actions == []:
+                    return getRandomSafeAction(game_state, self)
+            
+                return self.actions.pop(0)
     
-        if self.actions == None or self.actions == [] or is_stuck:
+        if self.actions == None or self.actions == []:
             return getRandomSafeAction(game_state, self)
         
         return self.actions.pop(0)
@@ -453,16 +409,13 @@ class agentBase(CaptureAgent):
                 paths.push(path, len(path))
 
         
+        
         if n_choose == 1: 
             if paths.isEmpty(): return None, new_positions[0]
             return paths.pop(), new_positions[0]
         else:
             if paths.isEmpty(): return None, new_positions
             return paths.pop(), new_positions
-        
-    def calculatePath(self, problem, heuristic, goal):
-        return aStarSearch(problem, heuristic, goal=goal), problem.goal
-
     
     
 
@@ -505,51 +458,15 @@ class agentBase(CaptureAgent):
         DISTANCE_FOOD_MUL = 10
 
         offence_food_pos = self.get_food(game_state).as_list()
-        current_pos = game_state.get_agent_position(data['agent'].index)
+        current_pos = game_state.get_agent_position(self.index)
         
         prev_game_state = self.get_previous_observation()
         if prev_game_state != None:
             if prev_game_state.has_food(current_pos[0], current_pos[1]):
                 return - (DISTANCE_FOOD_MUL + 1)
-            
-        DISTANCE_ENEMY_MUL = 1000
-        GO_BOUNDARY_POS = 4
-        
-        heur = 0
-
-        for enemy in self.get_opponents(game_state):
-            enemy_pos = game_state.get_agent_position(enemy)
-            if enemy_pos != None:
-                distance_to_enemy = distance(game_state, self, enemy_pos)
-                enemy_state = game_state.get_agent_state(enemy)
-                is_dangerous = distance_to_enemy < 3 and not isPacmanByIndex(game_state, enemy) 
-                is_dangerous = is_dangerous and enemy_state.scared_timer < (distance(game_state, self, enemy_pos) + 1)
-                if is_dangerous:
-                    heur += 1/ (distance_to_enemy+1) * DISTANCE_ENEMY_MUL
 
         distanceClosestFood = min([distance(game_state, self, food_pos) for food_pos in offence_food_pos])
-        return - 1 / (distanceClosestFood+1) * DISTANCE_FOOD_MUL + heur
-    
-    def returnSafeHeuristic(self, data):
-        game_state = data['game']
-        DISTANCE_ENEMY_MUL = 1000
-        GO_BOUNDARY_POS = 4
-        
-        heur = 0
-
-        for enemy in self.get_opponents(game_state):
-            enemy_pos = game_state.get_agent_position(enemy)
-            if enemy_pos != None:
-                distance_to_enemy = distance(game_state, self, enemy_pos)
-                enemy_state = game_state.get_agent_state(enemy)
-                is_dangerous = distance_to_enemy < 3 and not isPacmanByIndex(game_state, enemy) 
-                is_dangerous = is_dangerous and enemy_state.scared_timer < (distance(game_state, self, enemy_pos) + 1)
-                if is_dangerous:
-                    heur += 1/ (distance_to_enemy+1) * DISTANCE_ENEMY_MUL
-
-        heur -= 1/(self.distanceClosestBoundaryPos(game_state)+1) * GO_BOUNDARY_POS
-                    
-        return heur
+        return - 1 / (distanceClosestFood+1) * DISTANCE_FOOD_MUL
     
 #################  problems and heuristics  ####################
 
@@ -640,20 +557,11 @@ class agentBase(CaptureAgent):
                         
 
 class offensiveAgent(agentBase):
-    #@timeit
     def choose_action(self, game_state):
         for enemy in self.get_opponents(game_state):
             enemy_pos = game_state.get_agent_position(enemy)
             if enemy_pos != None and isPacmanByIndex(game_state, enemy) and distance(game_state, self, enemy_pos) <= 3:
-                my_teammate_pos = game_state.get_agent_position(self.get_team(game_state)[0])
-                if my_teammate_pos != None:
-                    distance_teammate_to_enemy = self.get_maze_distance(my_teammate_pos, enemy_pos)
-                else: 
-                    distance_teammate_to_enemy = 10
-
-                if distance(game_state, self, enemy_pos) < distance_teammate_to_enemy or distance(game_state, self, enemy_pos) <3:
-                    return self.choose_action_defensive(game_state)
-            
+                return self.choose_action_defensive(game_state)
             
         return self.choose_action_aggressive(game_state)
 
@@ -675,7 +583,6 @@ class FoodOffense():
         self.startingGameState = startingGameState
         # Need to ignore previous score change, as everything should be considered relative to this state
         self.startingGameState.data.score_change = 0
-        self.goal = None
         
 
     def getStartState(self):
@@ -702,16 +609,14 @@ class FoodOffense():
     def isGoalStateEatingFood(self, data):
         game_state = data['game']
 
-        currentAgent = game_state.get_agent_state(data['agent'].index)
+        currentAgent = data['agent']
         
-        prev_game_state = data['prev_game']
+        prev_game_state = data['prev_game_state']
         if prev_game_state != None:
             prev_agent_state = prev_game_state.get_agent_state(data['agent'].index)
             return didAgentEatFood(prev_agent_state, currentAgent)
         return False
             
-    def isGoalStateReturnSafe(self, data):
-        return data['pos'] in data['agent'].boundary_pos
 
     def get_successors(self, old_data):
         """
@@ -789,7 +694,6 @@ def aStarSearch(problem, heuristic=None, goal = None, target = None):
         # if this node is in goal state it return the path to reach that state
         if goal(data):
             #updateDistributions(distributions, data, heuristic)
-            problem.goal = data['pos']
             return path
 
         # if not the algorithm search in his successor and insert them in the frontier to be expanded
@@ -810,7 +714,6 @@ def aStarSearch(problem, heuristic=None, goal = None, target = None):
                 #updateDistributions(distributions, data, heuristic, show = False)
                     
                 frontier.push((new_data, total_path, fut_cost), priority)
-    #print('No path found')
 
 def showAndNormalize(distributions, agent):
     distributions[0].incrementAll(distributions[0].keys(), -min(distributions[0].values()))
@@ -839,7 +742,6 @@ class defensiveAgent(agentBase):
             return self.choose_action_aggressive(game_state)
         
         return self.choose_action_defensive(game_state)
-    
 
 class DefenceModes(Enum):
     # Default mode is set to Pinky
@@ -866,8 +768,6 @@ class defendTerritoryProblem():
             self.boundary = int(self.gridWidth / 2)
             
         self.myPreciousFood = self.captureAgent.get_food_you_are_defending(startingGameState)
-
-        self.myPreciousCapsule = self.captureAgent.get_capsules_you_are_defending(startingGameState)
 
         (self.captureAgent.boundaryPositions,
          self.captureAgent.possibleEnemyEntryPositions) = self.getViableBoundaryPositions()
@@ -904,7 +804,7 @@ class defendTerritoryProblem():
 
         return (boundaryPositions, enemyEntryPositions)
 
-    def getTargetBasedOnEnemyPosition(self, enemyPosition, see_enemy = True):
+    def getTargetBasedOnEnemyPosition(self, enemyPosition):
         """
         The idea of this method is to find the closest food to the
         enemy position. Then from that position find the next
@@ -912,12 +812,6 @@ class defendTerritoryProblem():
         the NthClosestFood which we return. If we reach the 
         final food before that we return it
         """
-        if see_enemy and len(self.myPreciousCapsule) > 0:
-            # probable next position is capsule
-            closestCapsulePositions = self.captureAgent.closestPosition(
-            enemyPosition, self.myPreciousCapsule)
-            return closestCapsulePositions.pop()
-            
         closestFoodPositions = self.captureAgent.closestPosition(
             enemyPosition, self.myPreciousFood.as_list())
         closestFoodPosition = closestFoodPositions.pop()
@@ -956,7 +850,7 @@ class defendTerritoryProblem():
 
         return self.getProbableEnemyEntryPointBasedOnFood()
 
-    def getClosestBoundary(self):
+    def getClosestBoundry(self):
         boundaries = self.captureAgent.boundaryPositions
         q = util.PriorityQueue()
         for boundary in boundaries:
@@ -970,7 +864,7 @@ class defendTerritoryProblem():
             self.captureAgent.index)
 
         if agentState.is_pacman:
-            return self.getClosestBoundary()
+            return self.getClosestBoundry()
 
         # If an enemy agents position is know calculate target
         # If not approximate possible targets 
@@ -984,6 +878,7 @@ class defendTerritoryProblem():
 
         # If no enemy agent is a pacman try to take some food
         return self.getRandomBoundaryPos()
+
 
     def getProbableEnemyEntryPointBasedOnFood(self):
         positionsSorted = util.PriorityQueue()
@@ -1009,7 +904,7 @@ class defendTerritoryProblem():
 
         return self.getProbableEnemyEntryPointBasedOnFood()
 
-    
+
     def getStartState(self):
         # This needs to return the state information to being with
 
@@ -1102,7 +997,7 @@ def is_threat(game_state, my_agent, enemy_idx, threat_distance):
 
 def closestEnemy(game_state, my_agent):
     """
-    Return the index of the closest enemy
+    Return the state of the closest enemy
     """
     positionsSorted = util.PriorityQueue()
 
@@ -1117,7 +1012,9 @@ def closestEnemy(game_state, my_agent):
         return None
     
     closestEnemy = positionsSorted.pop()
-    return closestEnemy
+    enemy_pos = game_state.get_agent_position(closestEnemy)
+    enemy_state = game_state.get_agent_state(closestEnemy)
+    return enemy_state
 
 
 def distance(game_state, agent, toPos):
@@ -1204,27 +1101,14 @@ def getClosestCapsule(agent):
     return min(capsules, key=lambda cap: agent.get_maze_distance(my_pos, cap))
 
 def needToCalculate(game_state, prev_game_state, agent):
-    my_pos = game_state.get_agent_position(agent.index)
     if prev_game_state == None:
         return True
     
     if agent.actions == None or agent.actions == []:
         return True
     
-    if thereIsAThreat(game_state, agent, 3):
+    if thereIsAThreat(game_state, agent, 4):
         return True
-    
-    closest_food = getClosestFood(game_state, agent)
-    if closest_food in agent.dead_ends:
-        distance_to_food = distance(game_state, agent, closest_food)
-        distance_food_to_exit = agent.get_maze_distance(my_pos, agent.nearest_exit_from_ends[closest_food])
-        closer_enemy_index = closestEnemy(game_state, agent)
-        if closer_enemy_index != None:
-            enemy_pos = game_state.get_agent_position(closer_enemy_index)
-            distance_ghost_to_exit = agent.get_maze_distance(enemy_pos, agent.nearest_exit_from_ends[closest_food])
-            if distance_to_food + distance_food_to_exit + 1 < distance_ghost_to_exit:
-                return True
-        
     
     if len(agent.get_food(game_state).as_list()) != len(agent.get_food(prev_game_state).as_list()):
         return True
@@ -1232,10 +1116,7 @@ def needToCalculate(game_state, prev_game_state, agent):
     if len(agent.get_capsules(game_state)) != len(agent.get_capsules(prev_game_state)):
         return True
     
-    if my_pos == agent.start:
-        return True
-    
-    if game_state.data.timeleft < 40:
+    if game_state.get_agent_position(agent.index) == agent.start:
         return True
     
     return False
@@ -1243,24 +1124,16 @@ def needToCalculate(game_state, prev_game_state, agent):
 def getRandomSafeAction(game_state, agent):
     my_actions = game_state.get_legal_actions(agent.index)
     current_pos = game_state.get_agent_position(agent.index)
-    secure_actions = []
-    safe_actions = []
 
-    enemy_positions = [game_state.get_agent_position(enemy) for enemy in agent.get_opponents(game_state) if game_state.get_agent_position(enemy) != None]
+    enemy_positions = [game_state.get_agent_position(enemy) for enemy in agent.get_opponents(game_state)]
         
     for next_action in my_actions:
         fut_pos = Actions.get_successor(current_pos, next_action)
             
-        if not fut_pos in enemy_positions:
-            safe_actions.append(next_action)
-            if all([agent.get_maze_distance(current_pos, enemy_pos) < agent.get_maze_distance(fut_pos, enemy_pos) for enemy_pos in enemy_positions]):
-                secure_actions.append(next_action)
-        
+        if fut_pos in enemy_positions:
+            my_actions.remove(next_action)
     
-    if safe_actions == [] and secure_actions == []:
+    if my_actions == []:
         return random.choice(game_state.get_legal_actions(agent.index))
     
-    if safe_actions == []:
-        return random.choice(secure_actions)
-    
-    return random.choice(safe_actions)
+    return random.choice(my_actions)
