@@ -377,7 +377,7 @@ class agentBase(CaptureAgent):
             if len(food_list) > 0:
                 best_path_to_food, chosen_food = self.calculatePath(problem, self.eatingFoodHeuristic, problem.isGoalStateEatingFood)
             else:
-                best_path_to_food = []
+                best_path_to_food = best_path_to_safe
                 chosen_food = None
 
             if is_enemy_scared_enough: 
@@ -529,7 +529,8 @@ class agentBase(CaptureAgent):
         if len(offence_food_pos) > 0:
             distanceClosestFood = min([distance(game_state, self, food_pos) for food_pos in offence_food_pos])
         else:
-            distanceClosestFood = 0
+            return heur
+        
         return - 1 / (distanceClosestFood+1) * DISTANCE_FOOD_MUL + heur
     
     def returnSafeHeuristic(self, data):
