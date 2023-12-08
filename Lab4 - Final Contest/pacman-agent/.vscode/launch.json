@@ -15,10 +15,7 @@
                 "-r",
                 "pacman-contest/src/contest/agents/A_Star_team/myTeamNewDelivered.py",
                 "-l",
-                "RANDOM",
-                "-n",
-                "10",
-                "-q"
+                "RANDOM"
 
                 
             ],
