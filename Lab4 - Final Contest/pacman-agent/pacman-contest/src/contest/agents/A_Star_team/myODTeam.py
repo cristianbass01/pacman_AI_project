@@ -808,7 +808,7 @@ def aStarSearch(problem, heuristic=None, goal = None, target = None):
                 #updateDistributions(distributions, data, heuristic, show = False)
                     
                 frontier.push((new_data, total_path, fut_cost), priority)
-    print('No path found')
+    #print('No path found')
 
 def showAndNormalize(distributions, agent):
     distributions[0].incrementAll(distributions[0].keys(), -min(distributions[0].values()))
