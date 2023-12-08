@@ -369,6 +369,8 @@ class DefensiveReflexAgent(AStarAgent):
         food_positions = [(x, y) for x in range(gameState.data.layout.width) for y in range(gameState.data.layout.height)
                           if self.has_enemy_food(gameState, x, y)]
         center = (gameState.data.layout.width // 2, gameState.data.layout.height // 2)
+        while gameState.has_wall(center[0], center[1]):
+            center = (center[0] + random.randint(-1, 1), center[1] + random.randint(-1, 1))
         food_distances = {pos: self.get_maze_distance(pos, center) for pos in food_positions}
         if len(food_distances) == 0:
             return None
