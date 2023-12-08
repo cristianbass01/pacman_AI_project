@@ -323,7 +323,7 @@ class agentBase(CaptureAgent):
 
         # Food
         food_list = self.get_food(game_state).as_list()
-        is_carrying_food = agent_state.num_carrying > 0
+        food_carrying = agent_state.num_carrying
             
         # Capsule
         capsules = self.get_capsules(game_state)
@@ -340,13 +340,13 @@ class agentBase(CaptureAgent):
             best_path_to_safe, _ = self.calculatePath(problem, self.returnSafeHeuristic, problem.isGoalStateReturnSafe)
 
             food_carrying = game_state.get_agent_state(self.index).num_carrying
-            food_limit = 6
+            food_limit = 5
 
             min_safe_pos_distance = 100
             if best_path_to_safe != None:
                 min_safe_pos_distance = len(best_path_to_safe)
 
-            is_enemy_scared_enough = True
+            is_enemy_scared_enough = False
 
             closer_enemy_index = None
 
@@ -377,11 +377,17 @@ class agentBase(CaptureAgent):
             if len(food_list) > 0:
                 best_path_to_food, chosen_food = self.calculatePath(problem, self.eatingFoodHeuristic, problem.isGoalStateEatingFood)
             else:
-                best_path_to_food = best_path_to_safe
+                best_path_to_food = []
                 chosen_food = None
 
             if is_enemy_scared_enough: 
-                food_limit = len(food_list) - 2
+                current_score = game_state.data.score
+                if self.red and current_score < 0:
+                    food_limit = min(-current_score + 2, len(food_list) - 2) 
+                elif not self.red and current_score > 0:
+                    food_limit = min(current_score + 2, len(food_list) - 2) 
+                else:
+                    food_limit = min(8, len(food_list) - 2)
             
             im_ghost = isGhostByIndex(game_state, self.index)
             
@@ -461,9 +467,6 @@ class agentBase(CaptureAgent):
         
     def calculatePath(self, problem, heuristic, goal):
         return aStarSearch(problem, heuristic, goal=goal), problem.goal
-
-    
-    
 
 ################# Heuristics ###################################
 
