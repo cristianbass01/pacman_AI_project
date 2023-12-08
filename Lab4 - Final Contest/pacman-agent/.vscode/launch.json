@@ -11,7 +11,7 @@
             "program": "pacman-contest/src/contest/capture.py",
             "args": [
                 "-r",
-                "pacman-contest/src/contest/agents/A_Star_team/myOffenseTeam_copy_2.py",
+                "pacman-contest/src/contest/agents/A_Star_team/myOffenseDTeam.py",
                 "-b",
                 "pacman-contest/src/contest/agents/mystery-agent/myTeam.py",
                 "-l",

@@ -429,22 +429,19 @@ class offensiveAgent(agentBase):
         #heuristic = -distanceClosestFood * 0.1
         return heuristic
     
-def is_threat(game_state, my_agent, enemy_idx):
+def is_threat(game_state, my_agent, enemy_idx, distance):
     enemy_pos = game_state.get_agent_position(enemy_idx)
+
     # Also possible to use self.get_agent_distances for fuzzy estimate of
-    # distance without knowing the enemy_pos (| NIKI) TODO
+    # distance without knowing the enemy_pos
     if enemy_pos == None:
         return False
     isGhost = not game_state.get_agent_state(enemy_idx).is_pacman
-    #isScared = game_state.get_agent_state(enemy_agent).is_scared
     scaredTimer = game_state.get_agent_state(enemy_idx).scared_timer
 
     # Control if enemy is a ghost which we can not kill
-    MIN_DISTANCE_CONSIDERED_THREAT = 3
-    if isGhost and scaredTimer <= (distance(game_state, my_agent, enemy_pos) + 2):
-        if distance(game_state, my_agent, enemy_pos) < MIN_DISTANCE_CONSIDERED_THREAT:
-            return False
-        return True
+    if isGhost and scaredTimer < distance(game_state, my_agent, enemy_pos):
+        return distance(game_state, my_agent, enemy_pos) < distance
     
     return False
 
