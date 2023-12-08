@@ -355,11 +355,8 @@ class agentBase(CaptureAgent):
                 scared_less_capsule_dist = scaredTimerByIndex(game_state, closer_enemy_index) < (min_capsule_distance + 1)
                 is_enemy_scared_enough = scaredTimerByIndex(game_state, closer_enemy_index) > (min_safe_pos_distance + 1)
                 enemy_pos = game_state.get_agent_position(closer_enemy_index)
-                if enemy_pos != None:
-                    is_enemy_closer_to_capsule = any([distance(game_state, self, capsule) > self.get_maze_distance(enemy_pos, capsule) for capsule in capsules])
-                else:
-                    is_enemy_closer_to_capsule = False
-
+                is_enemy_closer_to_capsule = any([distance(game_state, self, capsule) > self.get_maze_distance(enemy_pos, capsule) for capsule in capsules])
+            
                 if capsules and (min_ghost_distance < 4 or min_capsule_distance < 2) and scared_less_capsule_dist and not is_enemy_scared_enough and not is_enemy_closer_to_capsule:
                     self.actions, _ = self.calculatePathsTo(problem, capsules, is_stuck, n_choose=1)
 
@@ -370,9 +367,21 @@ class agentBase(CaptureAgent):
                         return getRandomSafeAction(game_state, self)
                     
                     return self.actions.pop(0)
+                
             else:
                 min_ghost_distance = 100
 
+            if len(food_list) > 0:
+                if isGhost(game_state, self) and is_stuck or my_pos == self.start:
+                    # Calculate distances to all food and create a list of weights based on the inverse of distances
+                    food_distances = [self.get_maze_distance(my_pos, food) for food in food_list]
+                    weights = [1 / dist**2 if dist > 0 else 1 for dist in food_distances]  # Avoid division by zero
+
+                    # Choose a random food based on the weights
+                    food_options = random.choices(food_list, weights=weights, k=3)
+                else:
+                    food_options = [getClosestFood(game_state, self)]
+            
             best_path_to_food, chosen_food = self.calculatePath(problem, self.eatingFoodHeuristic, problem.isGoalStateEatingFood)
 
             if is_enemy_scared_enough: 
@@ -397,7 +406,10 @@ class agentBase(CaptureAgent):
                         chosen_food = [getClosestFood(game_state, self)]
                         self.actions, _ = self.calculatePathsTo(problem, chosen_food, is_stuck, n_choose = 1)
             
+                    if self.actions == None or self.actions == []:
+                        return getRandomSafeAction(game_state, self)
                     
+                    return self.actions.pop(0)
             elif (im_ghost or is_enemy_scared_enough or food_carrying <= food_limit) and (len(food_list) > 2) and (game_state.data.timeleft > (min_safe_pos_distance + 5)):
                 self.actions = best_path_to_food
                 
@@ -412,8 +424,7 @@ class agentBase(CaptureAgent):
                     self.actions = best_path_to_food
                 
     
-        if self.actions == None or self.actions == [] or is_stuck or not self.actions[0] in game_state.get_legal_actions(self.index):
-            print('Random action taken')
+        if self.actions == None or self.actions == [] or is_stuck:
             return getRandomSafeAction(game_state, self)
         
         return self.actions.pop(0)
@@ -552,32 +563,6 @@ class agentBase(CaptureAgent):
 
     def register_initial_state(self, game_state):
         self.start = game_state.get_agent_position(self.index)
-
-        self.missingFoodLocation = None
-
-        self.missingFoodCounter = 0
-
-        self.mode = DefenceModes.Default
-
-        # Missing food location tell us the direction of the pacman
-        # and where we should head. I will by default try to intercept
-        # him from the front
-        self.prevMissingFoodLocation = []
-        self.missingFoodLocation = None
-
-        # A counter used to determine if the missingFoodPrevTarget
-        # is valid. This is to reuse it in case 1 turn ago a food was
-        # eaten and we still want to continue going towards the next food
-        self.missingFoodCounter = 0
-        # The below value is the initial value given to the counter 
-        # when missing food is found
-        self.initMissingFoodCounter = 4
-
-        self.possibleEnemyEntryPositions = None
-        self.boundaryPositions = None
-
-        self.boundaryGoalPosition = None
-
         # the following initialises self.red and self.distancer
         CaptureAgent.register_initial_state(self, game_state)
 
@@ -606,12 +591,6 @@ class agentBase(CaptureAgent):
         self.detect_dead_ends(game_state)
 
         self.past_pos = []
-
-        self.actions = []
-
-        self.last_seen_enemy_pos = None
-
-
 
         #distr = [util.Counter()]
         #for pos in self.nearest_exit_from_ends.values():

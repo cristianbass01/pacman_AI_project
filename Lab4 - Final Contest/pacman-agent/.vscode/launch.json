@@ -17,6 +17,9 @@
                 "-l",
                 "RANDOM",
                 "-n",
+                "10",
+                "-q"
+
                 
             ],
             "console": "integratedTerminal",
