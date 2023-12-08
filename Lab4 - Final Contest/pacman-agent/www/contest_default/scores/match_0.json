@@ -3,24 +3,133 @@
         [
             "Red",
             "Blue",
+<<<<<<< Updated upstream
             "RANDOM74667526",
             15,
             "Blue",
             139.0,
+=======
+            "RANDOM99897017",
+            12,
+            "Red",
+            436.0,
+            0
+        ],
+        [
+            "Red",
+            "Blue",
+            "RANDOM73163909",
+            6,
+            "Blue",
+            436.0,
+            0
+        ],
+        [
+            "Red",
+            "Blue",
+            "RANDOM17819408",
+            15,
+            "Blue",
+            436.0,
+            0
+        ],
+        [
+            "Red",
+            "Blue",
+            "RANDOM94568054",
+            20,
+            "Red",
+            436.0,
+            0
+        ],
+        [
+            "Red",
+            "Blue",
+            "RANDOM12749027",
+            4,
+            "Blue",
+            436.0,
+            0
+        ],
+        [
+            "Red",
+            "Blue",
+            "RANDOM83382553",
+            22,
+            "Blue",
+            436.0,
+            0
+        ],
+        [
+            "Red",
+            "Blue",
+            "RANDOM7381468",
+            4,
+            "Blue",
+            436.0,
+            0
+        ],
+        [
+            "Red",
+            "Blue",
+            "RANDOM47992302",
+            16,
+            "Blue",
+            436.0,
+            0
+        ],
+        [
+            "Red",
+            "Blue",
+            "RANDOM10934022",
+            19,
+            "Red",
+            436.0,
+            0
+        ],
+        [
+            "Red",
+            "Blue",
+            "RANDOM72732483",
+            16,
+            "Red",
+            436.0,
+>>>>>>> Stashed changes
             0
         ]
     ],
     "layouts": [
+<<<<<<< Updated upstream
         "RANDOM74667526"
+=======
+        "RANDOM99897017",
+        "RANDOM73163909",
+        "RANDOM17819408",
+        "RANDOM94568054",
+        "RANDOM12749027",
+        "RANDOM83382553",
+        "RANDOM7381468",
+        "RANDOM47992302",
+        "RANDOM10934022",
+        "RANDOM72732483"
+>>>>>>> Stashed changes
     ],
     "max_steps": 1200,
     "teams_stats": {
         "Blue": [
+<<<<<<< Updated upstream
             100.0,
             3,
             1,
+=======
+            60.0,
+            18,
+            6,
+>>>>>>> Stashed changes
             0,
+            4,
             0,
+<<<<<<< Updated upstream
             0,
             15
         ],
@@ -32,6 +141,18 @@
             1,
             0,
             0
+=======
+            67
+        ],
+        "Red": [
+            40.0,
+            12,
+            4,
+            0,
+            6,
+            0,
+            67
+>>>>>>> Stashed changes
         ]
     }
 }
