@@ -913,6 +913,17 @@ class defendTerritoryProblem():
 
     def isGoalStatePosition(self, data):
         return data['pos'] == data['target']
+    
+    def isGoalStateEatingFood(self, data):
+        game_state = data['game']
+
+        currentAgent = data['agent']
+        
+        prev_game_state = data['prev_game_state']
+        if prev_game_state != None:
+            prev_agent_state = prev_game_state.get_agent_state(data['agent'].index)
+            return didAgentEatFood(prev_agent_state, currentAgent)
+        return False
         
 
     def get_successors(self, old_data):

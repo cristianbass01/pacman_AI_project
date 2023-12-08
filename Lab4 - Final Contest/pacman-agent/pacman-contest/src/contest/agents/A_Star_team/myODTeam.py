@@ -258,7 +258,6 @@ class agentBase(CaptureAgent):
         # Build/define problem
         # Used solver to find the solution/path in the problem~
         # Use the plan from the solver, return the required action
-        
         # General
         agent_state = game_state.get_agent_state(self.index)
         start = self.start == game_state.get_agent_position(self.index)
@@ -292,25 +291,13 @@ class agentBase(CaptureAgent):
             # Problem
             problem = FoodOffense(startingGameState=game_state, captureAgent=self)
 
-            paths_to_safe = util.PriorityQueue()
-            for pos in self.boundary_pos:
-                if is_stuck:
-                    path_to_safe = aStarSearch(problem, self.scaredHeuristicToPos, goal=problem.isGoalStatePosition, target= pos)
-                else:
-                    path_to_safe = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target= pos)
-                if path_to_safe != None:
-                    paths_to_safe.push(path_to_safe, len(path_to_safe))
+            best_path_to_safe, _ = self.calculatePathsTo(problem, self.boundary_pos, is_stuck, n_choose = 3)
             
             food_carrying = game_state.get_agent_state(self.index).num_carrying
             food_limit = 6
-            
-            
-            best_path_to_safe = None
 
-            min_safe_pos_distance = 100
-
-            if not paths_to_safe.isEmpty():
-                best_path_to_safe = paths_to_safe.pop()
+            min_safe_pos_distance = 1
+            if best_path_to_safe != None:
                 min_safe_pos_distance = len(best_path_to_safe)
 
             is_enemy_scared_enough = False
@@ -326,11 +313,9 @@ class agentBase(CaptureAgent):
             
                 if capsules and (min_ghost_distance < 3 or min_capsule_distance < 2) and scared_less_capsule_dist:
                     closest_capsule = min(capsules, key=lambda cap: self.get_maze_distance(my_pos, cap))
-                    if is_stuck:
-                        self.actions = aStarSearch(problem, self.scaredHeuristicToPos, goal=problem.isGoalStatePosition, target= closest_capsule)
-                    else:
-                        self.actions = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target= closest_capsule)
                     
+                    self.actions, _ = self.calculatePathsTo(problem, [closest_capsule], is_stuck, n_choose=1)
+
                     if self.actions == None or self.actions == []:
                         self.actions = best_path_to_safe
                     
@@ -349,92 +334,88 @@ class agentBase(CaptureAgent):
                     weights = [1 / dist**2 if dist > 0 else 1 for dist in food_distances]  # Avoid division by zero
 
                     # Choose a random food based on the weights
-                    chosen_food = random.choices(food_list, weights=weights, k=1)[0]
-                    
+                    food_options = random.choices(food_list, weights=weights, k=3)
                 else:
-                    chosen_food = getClosestFood(game_state, self)
+                    food_options = [getClosestFood(game_state, self)]
+            
+            best_path_to_food, chosen_food = self.calculatePathsTo(problem, food_options, is_stuck, n_choose=1)
 
             if is_enemy_scared_enough: 
                 food_limit = len(food_list) - 2
             
             im_ghost = isGhostByIndex(game_state, self.index)
             
-            if game_state.data.timeleft > (min_safe_pos_distance + 5)  and food_carrying <= food_limit:
-                if len(food_list) > 2:
-                    if chosen_food in self.dead_ends and closer_enemy_index != None:
-                        distance_to_food = distance(game_state, self, chosen_food)
-                        distance_food_to_exit = self.get_maze_distance(my_pos, self.nearest_exit_from_ends[chosen_food])
-                        enemy_pos = game_state.get_agent_position(closer_enemy_index)
-                        distance_ghost_to_exit = self.get_maze_distance(enemy_pos, self.nearest_exit_from_ends[chosen_food])
-                        if distance_to_food + distance_food_to_exit + 1 < distance_ghost_to_exit:
-                            if is_stuck:
-                                self.actions = aStarSearch(problem, self.scaredHeuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                            else:
-                                self.actions = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                        else:
-                            self.actions = best_path_to_safe
-                    
-                            if self.actions == None or self.actions == []:
-                                return getRandomSafeAction(game_state, self)
-                            
-                            return self.actions.pop(0)
-                    elif im_ghost or is_enemy_scared_enough:
-                        if is_stuck:
-                            self.actions = aStarSearch(problem, self.scaredHeuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                        else:
-                            self.actions = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                        
-                        if self.actions == None or self.actions == []:
-                            self.actions = best_path_to_safe
-                    
-                        if self.actions == None or self.actions == []:
-                            return getRandomSafeAction(game_state, self)
-                        
-                        return self.actions.pop(0) 
-                    else: 
-                        self.actions = best_path_to_safe
-
-                        if self.actions == None or self.actions == []:
-                            if is_stuck:
-                                self.actions = aStarSearch(problem, self.scaredHeuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                            else:
-                                self.actions = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                        
-                        if self.actions == None or self.actions == []:
-                            return getRandomSafeAction(game_state, self)
-                    
-                        return self.actions.pop(0)
-            
+            if chosen_food in self.dead_ends and closer_enemy_index != None and len(food_list) > 2 and (game_state.data.timeleft > (min_safe_pos_distance + 5)  and food_carrying <= food_limit):
+                distance_to_food = distance(game_state, self, chosen_food)
+                distance_food_to_exit = self.get_maze_distance(my_pos, self.nearest_exit_from_ends[chosen_food])
+                enemy_pos = game_state.get_agent_position(closer_enemy_index)
+                distance_ghost_to_exit = self.get_maze_distance(enemy_pos, self.nearest_exit_from_ends[chosen_food])
+                if distance_to_food + distance_food_to_exit + 1 < distance_ghost_to_exit:
+                    self.actions = best_path_to_food
                 else:
                     self.actions = best_path_to_safe
-                    
-                    if self.actions == None or self.actions == []:
-                        if is_stuck:
-                            self.actions = aStarSearch(problem, self.scaredHeuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                        else:
-                            self.actions = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                    
+            
                     if self.actions == None or self.actions == []:
                         return getRandomSafeAction(game_state, self)
                     
-                    return self.actions.pop(0) 
-            else:       
-                self.actions = best_path_to_safe
+                    return self.actions.pop(0)
+            elif (im_ghost or is_enemy_scared_enough or food_carrying <= food_limit) and len(food_list) > 2 and game_state.data.timeleft > (min_safe_pos_distance + 5):
+                self.actions = best_path_to_food
+                
                 if self.actions == None or self.actions == []:
-                    if is_stuck:
-                        self.actions = aStarSearch(problem, self.scaredHeuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                    else:
-                        self.actions = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target= chosen_food)
-                    
+                    self.actions = best_path_to_safe
+            
                 if self.actions == None or self.actions == []:
                     return getRandomSafeAction(game_state, self)
                 
+                return self.actions.pop(0) 
+            else: 
+                self.actions = best_path_to_safe
+
+                if self.actions == None or self.actions == []:
+                    self.actions = best_path_to_food
+                
+                if self.actions == None or self.actions == []:
+                    return getRandomSafeAction(game_state, self)
+            
                 return self.actions.pop(0)
-        
+    
         if self.actions == None or self.actions == []:
             return getRandomSafeAction(game_state, self)
         
         return self.actions.pop(0)
+
+
+
+    def calculatePathsTo(self, problem, positions, is_stuck, n_choose = 1):
+        my_pos = self.past_pos[-1]
+
+        if len(positions) > n_choose:
+            boundary_distances = [self.get_maze_distance(my_pos, pos) for pos in self.boundary_pos]
+            weights = [1 / dist**2 if dist > 0 else 1 for dist in boundary_distances]
+
+            # Choose a random food based on the weights
+            new_positions = random.choices(self.boundary_pos, weights=weights, k=n_choose)
+        else:
+            new_positions = positions
+
+        paths = util.PriorityQueue()
+        for pos in new_positions:
+            if is_stuck:
+                path = aStarSearch(problem, self.scaredHeuristicToPos, goal=problem.isGoalStatePosition, target= pos)
+            else:
+                path = aStarSearch(problem, self.heuristicToPos, goal=problem.isGoalStatePosition, target= pos)
+            if path != None:
+                paths.push(path, len(path))
+
+        
+        
+        if n_choose == 1: 
+            if paths.isEmpty(): return None, new_positions[0]
+            return paths.pop(), new_positions[0]
+        else:
+            if paths.isEmpty(): return None, new_positions
+            return paths.pop(), new_positions
     
     
 
@@ -624,6 +605,17 @@ class FoodOffense():
 
     def isGoalStatePosition(self, data):
         return data['pos'] == data['target']
+    
+    def isGoalStateEatingFood(self, data):
+        game_state = data['game']
+
+        currentAgent = data['agent']
+        
+        prev_game_state = data['prev_game_state']
+        if prev_game_state != None:
+            prev_agent_state = prev_game_state.get_agent_state(data['agent'].index)
+            return didAgentEatFood(prev_agent_state, currentAgent)
+        return False
             
 
     def get_successors(self, old_data):

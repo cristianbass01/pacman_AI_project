@@ -11,11 +11,14 @@
             "program": "pacman-contest/src/contest/capture.py",
             "args": [
                 "-r",
-                "pacman-contest/src/contest/agents/A_Star_team/myOffenseDTeam.py",
+                "pacman-contest/src/contest/agents/A_Star_team/myODTeam.py",
                 "-b",
-                "pacman-contest/src/contest/agents/mystery-agent/myTeam.py",
+                "pacman-contest/src/contest/agents/FINAL_TEAM/myTeam.py",
                 "-l",
-                "RANDOM"
+                "RANDOM",
+                "-n",
+                "10",
+                "-q"
             ],
             "console": "integratedTerminal",
             "justMyCode": true
