@@ -75,7 +75,6 @@ class agentBase(CaptureAgent):
         
         self.gridHeight = None
         self.gridWidth = None
-        self.start = None
 
         self.safe_boundary = None
         self.danger_boundary = None

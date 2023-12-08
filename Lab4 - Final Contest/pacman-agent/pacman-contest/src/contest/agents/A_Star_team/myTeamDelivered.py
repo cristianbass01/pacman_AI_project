@@ -349,16 +349,21 @@ class agentBase(CaptureAgent):
                 distance_to_food = distance(game_state, self, chosen_food)
                 distance_food_to_exit = self.get_maze_distance(my_pos, self.nearest_exit_from_ends[chosen_food])
                 enemy_pos = game_state.get_agent_position(closer_enemy_index)
-                distance_ghost_to_exit = self.get_maze_distance(enemy_pos, self.nearest_exit_from_ends[chosen_food])
+                if enemy_pos != None:
+                    distance_ghost_to_exit = self.get_maze_distance(enemy_pos, self.nearest_exit_from_ends[chosen_food])
+                else:
+                    distance_ghost_to_exit = 1000
+                
                 if distance_to_food + distance_food_to_exit + 1 < distance_ghost_to_exit:
                     self.actions = best_path_to_food
                 else:
                     self.actions = best_path_to_safe
             
-                    if self.actions == None or self.actions == []:
-                        return getRandomSafeAction(game_state, self)
+                if self.actions == None or self.actions == []:
+                    return getRandomSafeAction(game_state, self)
                     
-                    return self.actions.pop(0)
+                return self.actions.pop(0)
+            
             elif (im_ghost or is_enemy_scared_enough or food_carrying <= food_limit) and len(food_list) > 2 and game_state.data.timeleft > (min_safe_pos_distance + 5):
                 self.actions = best_path_to_food
                 
