@@ -309,9 +309,10 @@ class agentBase(CaptureAgent):
         no_moves_left = self.actions == None or len(self.actions) == 0
         my_pos = game_state.get_agent_state(self.index).get_position()
         self.past_pos.append(my_pos)
-        if len(self.past_pos) > 5:
+        if len(self.past_pos) > 14:
             self.past_pos.pop(0)
-        is_stuck = len(set(self.past_pos)) < 3 and len(self.past_pos) == 5
+        is_stuck =  len(self.past_pos) > 7 and len(set(self.past_pos[:7])) <= 3
+        is_really_stuck = len(self.past_pos) >= 14  and len(set(self.past_pos)) <= 3
         min_safe_pos_distance = min([self.get_maze_distance(my_pos, safe_pos) for safe_pos in self.boundary_pos])
 
         # Enemy
@@ -391,7 +392,7 @@ class agentBase(CaptureAgent):
             
             im_ghost = isGhostByIndex(game_state, self.index)
             
-            if (len(food_list) > 2) and chosen_food in self.dead_ends and closer_enemy_index != None and (game_state.data.timeleft > (min_safe_pos_distance + 5)  and food_carrying <= food_limit):
+            if (len(food_list) > 2) and chosen_food in self.dead_ends and closer_enemy_index != None and ((game_state.data.timeleft / 4) > (min_safe_pos_distance + 5)  and food_carrying <= food_limit):
                 distance_to_food = distance(game_state, self, chosen_food)
                 distance_food_to_exit = self.get_maze_distance(my_pos, self.nearest_exit_from_ends[chosen_food])
                 enemy_pos = game_state.get_agent_position(closer_enemy_index)
@@ -430,7 +431,10 @@ class agentBase(CaptureAgent):
         if self.actions == None or self.actions == [] or is_stuck or not self.actions[0] in game_state.get_legal_actions(self.index):
             #print('Random action taken')
             self.actions = []
-            return getRandomSafeAction(game_state, self)
+            if not is_really_stuck:
+                return getRandomSafeAction(game_state, self)
+            else:
+                return random.choice(game_state.get_legal_actions(self.index))
         
         return self.actions.pop(0)
 
@@ -778,6 +782,12 @@ class FoodOffense():
         successors = []
 
         enemy_positions = [game_state.get_agent_position(enemy) for enemy in my_agent.get_opponents(game_state)]
+        
+        for enemy in my_agent.get_opponents(game_state):
+            for action in game_state.get_legal_actions(enemy):
+                enemy_pos = game_state.get_agent_position(enemy)
+                if enemy_pos != None:
+                    enemy_positions.append(Actions.get_successor(enemy_pos, action))
         
         for next_action in my_actions:
             fut_pos = Actions.get_successor(current_pos, next_action)

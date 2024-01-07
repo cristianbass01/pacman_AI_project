@@ -16,8 +16,6 @@
                 "pacman-contest/src/contest/agents/A_Star_team/myTeamNewDelivered.py",
                 "-l",
                 "RANDOM"
-
-                
             ],
             "console": "integratedTerminal",
             "justMyCode": true
